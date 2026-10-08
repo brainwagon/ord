@@ -6,17 +6,15 @@
 // it's retried on the next visit. The core (js/image.js) prices from what
 // `sources()` returns, so rows fill in as responses arrive, and the other
 // tabs never wait on any of this.
-import { esc, fmtUsd, costCell } from './table.js';
+import { esc, costCell } from './table.js';
 import { fetchJson } from './fetch-json.js';
 import { loadJson, saveJson } from './store.js';
 
 // The per-image price used for the Workload's resolution, with the resolution
-// it's for ("$0.048 @1K"), or "—" and the reason.
+// it's for ("$0.048 @1K", "~$0.039 @1K" for an estimate), or "—" and the reason.
 const COLUMNS = [
-  { key: 'perImage', label: 'Per image', title: "USD per image at the Workload's resolution (or the closest the Model offers); \"—\" when there's no per-image price (hover for why)",
-    cell: r => r.perImage.kind === 'usd'
-      ? `<td class="num">${fmtUsd(r.perImage.usd)}${r.perImageAt ? ` <span class="at">@${esc(r.perImageAt)}</span>` : ''}</td>`
-      : costCell(r.perImage) },
+  { key: 'perImage', label: 'Per image', title: "USD per image at the Workload's resolution (or the closest the Model offers); \"~\" marks an estimate from the Author's docs (hover for how); \"—\" when there's no per-image price (hover for why)",
+    cell: r => costCell(r.perImage, r.perImageAt ? ` <span class="at">@${esc(r.perImageAt)}</span>` : '') },
 ];
 
 const API_ORIGIN = 'https://openrouter.ai';

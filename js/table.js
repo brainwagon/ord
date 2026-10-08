@@ -38,9 +38,15 @@ const REASON_HINTS = {
 /** The hover text explaining a reason. */
 export const reasonHint = reason => REASON_HINTS[reason] || reason;
 
-/** A cell for a Price or Cost: the USD amount, or "—" and the reason (hover for why). */
-export function costCell(c) {
-  if (c.kind === 'usd') return `<td class="num cost">${fmtUsd(c.usd)}</td>`;
+/**
+ * A cell for a Price or Cost: the USD amount, marked "~" with the note on
+ * hover when it's an estimate, or "—" and the reason (hover for why).
+ * `suffix` is html put after an amount.
+ */
+export function costCell(c, suffix = '') {
+  if (c.kind === 'usd') return c.note
+    ? `<td class="num cost estimate" tabindex="0" title="${esc(c.note)}">~${fmtUsd(c.usd)}${suffix}</td>`
+    : `<td class="num cost">${fmtUsd(c.usd)}${suffix}</td>`;
   const hint = REASON_HINTS[c.reason];
   return `<td class="num note reason" tabindex="0" title="${esc(hint ? `${c.reason}: ${hint}` : c.reason)}">` +
     `—<span class="why">${esc(c.reason)}</span></td>`;

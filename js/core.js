@@ -29,7 +29,8 @@ import { parsePrice, roundUsd, reason, usd, isPrice, isFreeVariant } from './pri
  * `newWindowDays` before `now`). Pages add their own fields and badges.
  *
  * Every price and cost is one shape (js/pricing.js):
- *   {kind: 'usd', usd}         a USD amount
+ *   {kind: 'usd', usd, note?}  a USD amount; `note`, when present, says how
+ *                              it was estimated (shown on hover)
  *   {kind: 'reason', reason}   none, and why: one of REASONS
  *
  * All models adds `prices: {input, output}`, USD per 1M tokens ($0 only for
@@ -286,7 +287,7 @@ function workloadCoster(workload, values, sources) {
   return m => {
     const c = workload.cost(m, values, sources);
     if (!isPrice(c)) throw new Error(`${workload.id} cost rule gave ${JSON.stringify(c)} for ${m.id}`);
-    return c.kind === 'usd' ? usd(roundUsd(c.usd)) : c;
+    return c.kind === 'usd' ? { ...c, usd: roundUsd(c.usd) } : c;   // keeps an estimate's note
   };
 }
 

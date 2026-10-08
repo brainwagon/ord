@@ -3,7 +3,9 @@
 //
 // A Price (a rate, such as USD per 1M tokens or per image) and a Cost (USD for
 // a Workload) have one shape:
-//   {kind: 'usd', usd}         a USD amount
+//   {kind: 'usd', usd, note?}  a USD amount; `note`, when present, says how
+//                              it was estimated (it isn't a price OpenRouter
+//                              lists as such) and is shown on hover
 //   {kind: 'reason', reason}   no amount; `reason` is one of REASONS
 
 // Every reason a price or cost can be unavailable.

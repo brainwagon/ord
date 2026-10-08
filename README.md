@@ -16,7 +16,8 @@ The pure core (no DOM, no network):
   comment above the page definitions); the shell then shows the inputs and a
   sortable cost column with no further changes.
 - `js/pricing.js`: the vocabulary the core and pages share: the one shape of a
-  price or cost (`{kind: 'usd', usd}` or `{kind: 'reason', reason}`), the
+  price or cost (`{kind: 'usd', usd, note?}`, `note` saying how an estimate
+  was made, or `{kind: 'reason', reason}`), the
   reasons a price can be unavailable, USD rounding, price parsing and `:free`
   variants.
 - `js/<page>.js` for `image`, `audio`, `video`, `transcription` and
