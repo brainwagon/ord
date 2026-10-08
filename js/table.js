@@ -15,6 +15,32 @@ export const CORE_COLUMNS = [
 ];
 
 /**
+ * The cost column every page with a Workload gets (the shell adds it after the
+ * page's own columns). A row's `cost` is a USD amount, or "—" with the reason
+ * it can't be computed on hover.
+ */
+export const COST_COLUMN = {
+  key: 'cost', label: 'Cost', title: 'USD for the Workload above; "—" when it can\'t be computed (hover for why)',
+  cell: r => costCell(r.cost),
+};
+
+// Hover text for each cost-unavailable reason (core.js REASONS).
+const REASON_HINTS = {
+  'per-token pricing': 'billed by the token, so no cost for this Workload',
+  'unpriced': 'OpenRouter lists no price for this model',
+  'unit unclear': "the price's unit is unclear, so no cost is computed",
+  'variable': 'price depends on the model the router picks',
+  'pricing data not loaded': "this page's pricing data hasn't loaded",
+};
+
+export function costCell(c) {
+  if (c.kind === 'usd') return `<td class="num cost">${fmtUsd(c.usd)}</td>`;
+  const hint = REASON_HINTS[c.reason];
+  return `<td class="num note reason" tabindex="0" title="${esc(hint ? `${c.reason}: ${hint}` : c.reason)}">` +
+    `—<span class="why">${esc(c.reason)}</span></td>`;
+}
+
+/**
  * Badge renderers, keyed by the name in a row's `badges`. Each turns the
  * badge's value into html, or '' when the badge doesn't apply. Later pages
  * add theirs here (new, reasoning, tiered, …).

@@ -11,7 +11,9 @@ HTML, CSS and ES modules with no build step and no dependencies.
   columns after `CORE_COLUMNS`; row order always comes from the core.
 - `js/core.js`: the pure core. It has no DOM or network access, and its single entry
   point is `buildPages(sources, settings, now)`, which turns raw API responses into
-  rows for each page.
+  rows for each page. A page with a Workload declares its inputs and a pure cost
+  rule there (see the comment above the page definitions); the shell then shows
+  the inputs and a sortable cost column with no further changes.
 - `test/`: tests for `buildPages`, run against saved real API responses in
   `test/fixtures/`.
 - `tools/trim-fixture.mjs`: trims a raw API response to chosen models and keeps each

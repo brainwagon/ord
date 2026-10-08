@@ -1,7 +1,7 @@
 // The shell: fetching, tabs, filters and rendering around the pure core
 // (core.js). The shared table lives in table.js.
-import { buildPages } from './core.js';
-import { CORE_COLUMNS, BADGES, tableHtml, attachTable, fmtUsd, esc, extraPriceLines } from './table.js';
+import { buildPages, WORKLOADS, workloadValues } from './core.js';
+import { CORE_COLUMNS, COST_COLUMN, BADGES, tableHtml, attachTable, fmtUsd, esc, extraPriceLines } from './table.js';
 
 const CATALOGUE_URL = 'https://openrouter.ai/api/v1/models?output_modalities=all';
 
@@ -20,7 +20,8 @@ const CODE_COLUMNS = [
 ];
 
 // Hash -> page id (the key buildPages returns rows under), tab label, and the
-// page's columns after the core ones.
+// page's columns after the core ones. A page with a Workload in the core
+// (WORKLOADS) gets its inputs and the cost column automatically.
 const PAGES = {
   new: { id: 'whatsNew', label: "What's new" },
   code: { id: 'code', label: 'Code', columns: CODE_COLUMNS, defaultSort: { key: 'codingIndex', dir: 'desc' }, controls: ['reasoningOnlyLabel'] },
@@ -45,8 +46,9 @@ const state = {
   catalogue: null, loadedAt: null, loading: false,
   // The core's settings; filters and sort carry across tabs.
   // A null sort (or a key the page lacks) means the page's own default order.
+  // `workloads` holds each page's Workload values by page id (see WORKLOADS).
   settings: { author: '', search: '', hideFree: false, reasoningOnly: false,
-    newWindowDays: DEFAULT_NEW_WINDOW_DAYS, sort: null },
+    newWindowDays: DEFAULT_NEW_WINDOW_DAYS, sort: null, workloads: {} },
   rows: [], columns: [],   // what the table is showing now
 };
 
@@ -91,6 +93,7 @@ function render() {
     else a.removeAttribute('aria-current');
   }
   renderStatus();
+  renderWorkload(PAGES[hash].id);
   for (const el of document.querySelectorAll('[data-page-control]')) {
     el.hidden = !(PAGES[hash].controls || []).includes(el.id);
   }
@@ -109,7 +112,8 @@ function render() {
     return;
   }
   state.rows = rows;
-  state.columns = [...CORE_COLUMNS, ...(PAGES[hash].columns || [])];
+  state.columns = [...CORE_COLUMNS, ...(PAGES[hash].columns || []),
+    ...(WORKLOADS[PAGES[hash].id] ? [COST_COLUMN] : [])];
   page.innerHTML = tableHtml(rows, state.columns, currentSort());
 }
 
@@ -119,6 +123,42 @@ function currentSort() {
   const page = PAGES[currentHash()], sort = state.settings.sort;
   if (sort && state.columns.some(c => c.key === sort.key)) return sort;
   return page.defaultSort || { key: 'created', dir: 'desc' };
+}
+
+// The Workload panel: the current page's inputs, from its declaration in the
+// core. Rebuilt only when the page changes, so typing keeps focus.
+function renderWorkload(pageId) {
+  const panel = $('workload'), inputs = WORKLOADS[pageId];
+  panel.hidden = !inputs;
+  if (!inputs || panel.dataset.page === pageId) return;
+  panel.dataset.page = pageId;
+  const values = workloadValues(pageId, state.settings);
+  panel.innerHTML = '<span class="wl-title" title="the work each Model is costed for">Workload</span>' +
+    inputs.map(i => `<label>${esc(i.label)} ${i.options
+      ? `<select data-workload="${esc(i.key)}">${i.options.map(o =>
+          `<option value="${esc(o.value)}"${o.value === values[i.key] ? ' selected' : ''}>${esc(o.label)}</option>`).join('')}</select>`
+      : `<input data-workload="${esc(i.key)}" type="number" min="${i.min ?? 0}" step="${i.step ?? 'any'}" ` +
+        `value="${values[i.key]}" inputmode="decimal"><span class="wl-hint" data-hint="${esc(i.key)}">${fmtCount(values[i.key])}</span>`
+    }</label>`).join('');
+}
+
+// 3000000 -> "3M", for reading big counts at a glance.
+function fmtCount(n) {
+  if (n >= 1e6) return +(n / 1e6).toPrecision(4) + 'M';
+  if (n >= 1e3) return +(n / 1e3).toPrecision(4) + 'K';
+  return '';
+}
+
+function setWorkload(key, raw) {
+  const pageId = $('workload').dataset.page;
+  const input = WORKLOADS[pageId].find(i => i.key === key);
+  // Choices keep their declared value (which may not be a string).
+  const value = input.options ? input.options.find(o => String(o.value) === raw)?.value : raw;
+  state.settings.workloads = { ...state.settings.workloads,
+    [pageId]: { ...state.settings.workloads[pageId], [key]: value } };
+  const hint = $('workload').querySelector(`[data-hint="${CSS.escape(key)}"]`);
+  if (hint) hint.textContent = fmtCount(workloadValues(pageId, state.settings)[key]);
+  render();
 }
 
 function renderAuthors(authors) {
@@ -168,6 +208,10 @@ $('newWindow').addEventListener('input', e => {
 });
 $('hideFree').addEventListener('change', e => setSetting({ hideFree: e.target.checked }));
 $('reasoningOnly').addEventListener('change', e => setSetting({ reasoningOnly: e.target.checked }));
+$('workload').addEventListener('input', e => {
+  const key = e.target.dataset.workload;
+  if (key) setWorkload(key, e.target.value);
+});
 $('refresh').addEventListener('click', loadCatalogue);
 $('retry').addEventListener('click', loadCatalogue);
 addEventListener('hashchange', render);
