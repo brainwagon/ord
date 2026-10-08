@@ -452,3 +452,46 @@ test('pages without a Workload carry no cost', () => {
   assert.ok(pages.allModels.every(r => !('cost' in r)));
   assert.ok(pages.whatsNew.every(r => !('cost' in r)));
 });
+
+// --- Malformed prices ---
+
+test('a Model with a missing or non-numeric price is "unpriced" on its own row; every other row and page still builds', () => {
+  const clone = (id, newId, pricing) => {
+    const m = structuredClone(catalogue.data.find(m => m.id === id));
+    m.id = newId;
+    if (pricing === undefined) delete m.pricing; else m.pricing = pricing;
+    return m;
+  };
+  const broken = [
+    clone('anthropic/claude-opus-5.5', 'x/no-pricing', undefined),
+    clone('anthropic/claude-opus-5.5', 'x/garbled-text', { prompt: 'abc', completion: '0.00002' }),
+    clone('typesafe/jev-1.13', 'x/garbled-decisions', { prompt: 'n/a' }),
+    clone('openai/whisper-1', 'x/garbled-transcription', { prompt: '[object Object]', completion: '0' }),
+    clone('elevenlabs/eleven-v4', 'x/garbled-speech', { prompt: 'free!' }),
+    clone('google/veo-3.1', 'x/no-pricing-video', undefined),
+  ];
+  const pages = buildPages({ catalogue: { data: [...catalogue.data, ...broken] } }, {}, NOW);
+  const unpriced = { kind: 'reason', reason: 'unpriced' };
+  const find = (page, id) => pages[page].find(r => r.id === id);
+  for (const id of ['x/no-pricing', 'x/garbled-text']) {
+    assert.deepEqual(find('code', id).cost, unpriced, id);
+    assert.notEqual(find('allModels', id).prices.input.kind, 'usd', id);
+  }
+  assert.deepEqual(find('decisions', 'x/garbled-decisions').cost, unpriced);
+  assert.deepEqual(find('transcription', 'x/garbled-transcription').cost, unpriced);
+  assert.deepEqual(find('transcription', 'x/garbled-transcription').perMinute, unpriced);
+  assert.deepEqual(find('audio', 'x/garbled-speech').cost, unpriced);
+  assert.ok(find('video', 'x/no-pricing-video'));
+  // No USD figure anywhere is NaN.
+  for (const [page, rows] of Object.entries(pages)) {
+    if (!Array.isArray(rows) || page === 'authors') continue;
+    for (const r of rows) {
+      for (const v of [r.cost, r.prices?.input, r.prices?.output, r.perMinute, r.charPrice]) {
+        assert.ok(!v || v.kind !== 'usd' || Number.isFinite(v.usd), `${page} ${r.id}`);
+      }
+    }
+  }
+  // The well-formed rows are untouched.
+  assert.deepEqual(find('code', 'anthropic/claude-opus-5.5').cost, usd(32));
+  assert.equal(pages.allModels.length, 35 + broken.length);
+});

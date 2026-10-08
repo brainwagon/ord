@@ -3,6 +3,8 @@
 // core.js's shared pipeline (see the comment above the page definitions there).
 // Pure: no DOM, no network.
 
+import { parsePrice } from './pricing.js';
+
 // How a speech or audio Model is billed, from its catalogue prices. OpenRouter's
 // TTS guide (docs/guides/overview/multimodal/tts) says most TTS Models are
 // priced per character of input text, under `prompt`, and some (Seed Audio
@@ -19,8 +21,9 @@
 //   {unit: 'unpriced'}        no non-zero price, and not a free offering (Lyria)
 //   {unit: 'variable'}        the API's -1
 function billingOf(m) {
-  const n = k => Number(m.pricing[k] ?? 0);
+  const n = k => parsePrice(m.pricing?.[k] ?? 0);
   const prompt = n('prompt'), completion = n('completion');
+  if ([prompt, completion, n('audio'), n('audio_output')].includes(null)) return { unit: 'unpriced' };
   const audioTokens = n('audio') || n('audio_output');
   const speech = m.architecture.output_modalities.includes('speech');
   if ([prompt, completion, n('audio'), n('audio_output')].some(v => v < 0)) return { unit: 'variable' };

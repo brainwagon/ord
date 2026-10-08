@@ -5,6 +5,7 @@ import { transcriptionPage } from './transcription.js';
 import { decisionsPage } from './decisions.js';
 import { audioPage } from './audio.js';
 import { imagePage } from './image.js';
+import { parsePrice } from './pricing.js';
 
 /**
  * The core's single public entry point.
@@ -172,7 +173,7 @@ const CODE_WORKLOAD = {
     { key: 'inputTokens', label: 'Input tokens', default: 3_000_000, step: 100_000 },
     { key: 'outputTokens', label: 'Output tokens', default: 1_000_000, step: 100_000 },
   ],
-  cost: (m, w) => tokenCost(m, [[m.pricing.prompt, w.inputTokens], [m.pricing.completion, w.outputTokens]]),
+  cost: (m, w) => tokenCost(m, [[m.pricing?.prompt, w.inputTokens], [m.pricing?.completion, w.outputTokens]]),
 };
 
 const CODE = {
@@ -341,12 +342,13 @@ function workloadCoster(workload, settings, sources) {
 const reason = r => ({ kind: 'reason', reason: r });
 
 // The cost of [[USD-per-unit price string, units], …] on a Model: any -1 makes
-// it variable, a zero price on a Model that isn't token-priced makes it
-// unpriced (see isTokenPriced), otherwise the sum.
+// it variable, a missing or non-numeric price, or a zero price on a Model that
+// isn't token-priced (see isTokenPriced), makes it unpriced; otherwise the sum.
 function tokenCost(m, terms) {
   let usd = 0;
   for (const [price, units] of terms) {
-    const v = Number(price);
+    const v = parsePrice(price);
+    if (v === null) return reason(REASONS.unpriced);
     if (v < 0) return reason(REASONS.variable);
     if (v === 0 && !isTokenPriced(m)) return reason(REASONS.unpriced);
     usd += v * units;
@@ -387,7 +389,7 @@ function coreFields(m) {
 
 function codeRow(m) {
   const core = coreFields(m);
-  const p = m.pricing, zeroIsFree = isTokenPriced(m);
+  const p = m.pricing || {}, zeroIsFree = isTokenPriced(m);
   // Only prompt-length tiers count; some overrides are by time of day instead.
   const tiers = (p.overrides || []).filter(o => o.min_prompt_tokens != null).map(o => ({
     minPromptTokens: o.min_prompt_tokens,
@@ -421,7 +423,10 @@ function extraPrices(pricing) {
   for (const [name, field] of Object.entries(EXTRA_TOKEN_PRICES)) {
     if (pricing[field] != null) out[name] = perMillionTokens(pricing[field], true);
   }
-  if (pricing.web_search != null) out.webSearch = { kind: 'usd', usd: Number(pricing.web_search) };
+  if (pricing.web_search != null) {
+    const v = parsePrice(pricing.web_search);
+    out.webSearch = v === null || v < 0 ? { kind: v === null ? 'unpriced' : 'variable' } : { kind: 'usd', usd: v };
+  }
   return out;
 }
 
@@ -430,8 +435,8 @@ function allModelsRow(m) {
   return {
     ...coreFields(m),
     prices: {
-      input: perMillionTokens(m.pricing.prompt, zeroIsFree),
-      output: perMillionTokens(m.pricing.completion, zeroIsFree),
+      input: perMillionTokens(m.pricing?.prompt, zeroIsFree),
+      output: perMillionTokens(m.pricing?.completion, zeroIsFree),
     },
   };
 }
@@ -445,13 +450,15 @@ const TOKEN_BILLED_OUTPUTS = new Set(['text', 'decisions', 'embeddings']);
 // it's a `:free` variant, or everything it outputs is billed by the token.
 function isTokenPriced(m) {
   return m.id.endsWith(':free') ||
-    m.architecture.output_modalities.every(o => TOKEN_BILLED_OUTPUTS.has(o));
+    outputs(m).every(o => TOKEN_BILLED_OUTPUTS.has(o));
 }
 
-// API prices are USD-per-token strings; "-1" means variable (routers).
+// API prices are USD-per-token strings; "-1" means variable (routers), and a
+// missing or non-numeric one is unpriced.
 // Rounding to 12 significant digits removes the float noise scaling adds.
 function perMillionTokens(s, zeroIsFree) {
-  const v = Number(s);
+  const v = parsePrice(s);
+  if (v === null) return { kind: 'unpriced' };
   if (v < 0) return { kind: 'variable' };
   if (v === 0 && !zeroIsFree) return { kind: 'unpriced' };
   return { kind: 'usd', usd: Number((v * 1e6).toPrecision(12)) };

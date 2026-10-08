@@ -25,12 +25,12 @@ export function decisionsPage({ coreFields, tokenCost, includes }) {
         { key: 'decisions', label: 'Decisions', default: 1000, step: 100 },
         { key: 'tokensPerDecision', label: 'Input tokens per decision', default: 2000, step: 100 },
       ],
-      cost: (m, w) => tokenCost(m, [[m.pricing.prompt, w.decisions * w.tokensPerDecision]]),
+      cost: (m, w) => tokenCost(m, [[m.pricing?.prompt, w.decisions * w.tokensPerDecision]]),
     },
     rowOf: m => ({
       ...coreFields(m),
       acceptsImages: (m.architecture?.input_modalities || []).includes('image'),
-      free: Number(m.pricing.prompt) === 0 && Number(m.pricing.completion) === 0,
+      free: Number(m.pricing?.prompt) === 0 && Number(m.pricing?.completion) === 0,
     }),
     sortKeys: { acceptsImages: r => Number(r.acceptsImages), free: r => Number(r.free) },
   };

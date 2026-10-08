@@ -9,6 +9,8 @@
 // orders of magnitude. Models with both input and output prices (e.g.
 // gpt-4o-transcribe) are billed by the token.
 
+import { parsePrice } from './pricing.js';
+
 // The highest price per second of audio taken at face value.
 export const MAX_PER_SECOND_USD = 0.01;
 
@@ -24,7 +26,8 @@ export function transcriptionPage({ REASONS, coreFields, includes }) {
 
   // A Model's price per second of audio, as a Cost.
   function perSecond(m) {
-    const input = Number(m.pricing.prompt), output = Number(m.pricing.completion || 0);
+    const input = parsePrice(m.pricing?.prompt), output = parsePrice(m.pricing?.completion ?? 0);
+    if (input === null || output === null) return reason(REASONS.unpriced);
     if (input < 0 || output < 0) return reason(REASONS.variable);
     if (output > 0) return reason(REASONS.perToken);
     if (input === 0) return m.id.endsWith(':free') ? { kind: 'usd', usd: 0 } : reason(REASONS.unpriced);
