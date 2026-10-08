@@ -1,5 +1,6 @@
 // The dashboard's pure core: raw OpenRouter responses + viewer settings + the
 // current time in, the rows each page shows out. No DOM, no network.
+import { transcriptionPage } from './transcription.js';
 
 /**
  * The core's single public entry point.
@@ -31,7 +32,12 @@
  * `reasoning` field) and `tiered`: null, or the higher-rate tiers
  * [{minPromptTokens, input, output, extraPrices}].
  *
- * Every page with a Workload (WORKLOADS; today Code) adds `cost`, a Cost:
+ * Transcription (js/transcription.js) adds `perMinute`, a Cost per minute of
+ * audio; its Workload is minutes of audio (default 60), costed per second for
+ * Models with one input price and no output price, "unit unclear" above
+ * $0.01/s, and per-token for Models with both prices.
+ *
+ * Every page with a Workload (WORKLOADS; Code, Transcription) adds `cost`, a Cost:
  * {kind: 'usd', usd} for the viewer's Workload, or {kind: 'reason', reason}
  * with one of REASONS. Code's cost is input tokens × `prompt` + output tokens
  * × `completion`, at the base tier. Sorting by cost puts USD amounts first,
@@ -67,6 +73,7 @@ export function buildPages(sources, settings, now) {
     allModels: buildPage(models, settings, ALL_MODELS, isNew),
     whatsNew: buildPage(models.filter(isNew), settings, WHATS_NEW, isNew),
     code: buildPage(models, settings, CODE, isNew, sources),
+    transcription: buildPage(models, settings, TRANSCRIPTION, isNew, sources),
   };
 }
 
@@ -227,6 +234,9 @@ export const REASONS = Object.freeze({
 });
 const REASON_SET = new Set(Object.values(REASONS));
 
+// Transcription: minutes of audio, priced per second (js/transcription.js).
+const TRANSCRIPTION = transcriptionPage({ REASONS, coreFields, includes: CAPABILITY_PAGES.find(p => p.id === 'transcription').includes });
+
 /**
  * Each page's Workload inputs, keyed by page id, for the shell to render. A
  * WorkloadInput is {key, label, default, ...}: a number (`step`, `min`
@@ -235,7 +245,7 @@ const REASON_SET = new Set(Object.values(REASONS));
  * `settings.workloads[pageId][key]`; missing or invalid ones mean the default.
  */
 export const WORKLOADS = Object.freeze(Object.fromEntries(
-  [CODE_WORKLOAD].map(w => [w.id, w.inputs])));
+  [CODE_WORKLOAD, TRANSCRIPTION.workload].map(w => [w.id, w.inputs])));
 
 /** A page's Workload values: the viewer's, with defaults for anything missing or invalid. */
 export function workloadValues(pageId, settings) {
