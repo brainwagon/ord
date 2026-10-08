@@ -2,7 +2,8 @@
 // (core.js). The shared table lives in table.js.
 import { buildPages, WORKLOADS, workloadValues } from './core.js';
 import { loadSettings, saveSettings, clearSaved, loadTheme, saveTheme } from './store.js';
-import { CORE_COLUMNS, COST_COLUMN, BADGES, tableHtml, attachTable, fmtUsd, esc, extraPriceLines } from './table.js';
+import { CORE_COLUMNS, COST_COLUMN, BADGES, tableHtml, attachTable, fmtUsd, esc, extraPriceLines, costCell } from './table.js';
+import { DECISIONS_VIEW } from './decisions-view.js';
 import { AUDIO_COLUMNS } from './audio-view.js';
 
 const CATALOGUE_URL = 'https://openrouter.ai/api/v1/models?output_modalities=all';
@@ -30,8 +31,8 @@ const PAGES = {
   image: { id: 'image', label: 'Image' },
   audio: { id: 'audio', label: 'Audio', columns: AUDIO_COLUMNS },
   video: { id: 'video', label: 'Video' },
-  transcription: { id: 'transcription', label: 'Transcription' },
-  decisions: { id: 'decisions', label: 'Decisions' },
+  transcription: { id: 'transcription', label: 'Transcription', columns: [{ key: 'perMinute', label: 'Per minute', title: 'USD per minute of audio; "—" when it can\'t be computed (hover for why)', cell: r => r.perMinute.kind === 'usd' ? `<td class="num">${fmtUsd(r.perMinute.usd)}</td>` : costCell(r.perMinute) }] },
+  decisions: { id: 'decisions', label: 'Decisions', ...DECISIONS_VIEW },
   all: { id: 'allModels', label: 'All models', columns: ALL_MODELS_COLUMNS },
 };
 const DEFAULT_HASH = 'new';
@@ -126,7 +127,7 @@ function render() {
   state.rows = rows;
   state.columns = [...CORE_COLUMNS, ...(PAGES[hash].columns || []),
     ...(WORKLOADS[PAGES[hash].id] ? [COST_COLUMN] : [])];
-  page.innerHTML = tableHtml(rows, state.columns, currentSort());
+  page.innerHTML = (PAGES[hash].intro || '') + tableHtml(rows, state.columns, currentSort());
 }
 
 // The sort the table is showing: the viewer's, if this page has that column,

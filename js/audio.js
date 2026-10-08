@@ -1,10 +1,7 @@
 // The Audio page: speech and audio-output Models (text-to-speech, audio chat,
 // music), costed for a Workload of characters to speak. A page definition for
 // core.js's shared pipeline (see the comment above the page definitions there).
-//
-// This module and core.js import each other, so nothing here may touch
-// core.js's bindings at load time: they're only used inside functions.
-import { coreFields, onCapabilityPage, REASONS } from './core.js';
+// Pure: no DOM, no network.
 
 // How a speech or audio Model is billed, from its catalogue prices. OpenRouter's
 // TTS guide (docs/guides/overview/multimodal/tts) says most TTS Models are
@@ -39,37 +36,45 @@ function billingOf(m) {
 const REASON_OF_UNIT = { token: 'perToken', second: 'unitUnclear', unclear: 'unitUnclear',
   unpriced: 'unpriced', variable: 'variable' };
 
-export const AUDIO_WORKLOAD = {
-  id: 'audio',
-  inputs: [
-    { key: 'characters', label: 'Characters to speak', default: 100_000, step: 1_000 },
-  ],
-  cost: (m, w) => {
+/**
+ * The Audio page definition. The core passes in what the page needs from it,
+ * so this module imports nothing.
+ *
+ * @param {{REASONS: object, coreFields: (m: object) => object, includes: (m: object) => boolean}} core
+ */
+export function audioPage({ REASONS, coreFields, includes }) {
+  const workload = {
+    id: 'audio',
+    inputs: [
+      { key: 'characters', label: 'Characters to speak', default: 100_000, step: 1_000 },
+    ],
+    cost: (m, w) => {
+      const b = billingOf(m);
+      if (b.unit === 'character') return { kind: 'usd', usd: w.characters * b.usd };
+      return { kind: 'reason', reason: REASONS[REASON_OF_UNIT[b.unit]] };
+    },
+  };
+
+  // Audio adds `charPrice` (a Price, USD per 1M characters, or null when the
+  // Model isn't billed per character) and `billing`: its unit, as billingOf,
+  // with the per-second rate (`usd`) or the token prices (`tokenPrices`, USD
+  // per 1M tokens: input, output, audioInput, audioOutput, those the API gives).
+  function audioRow(m) {
     const b = billingOf(m);
-    if (b.unit === 'character') return { kind: 'usd', usd: w.characters * b.usd };
-    return { kind: 'reason', reason: REASONS[REASON_OF_UNIT[b.unit]] };
-  },
-};
+    const billing = b.unit === 'character' ? { unit: b.unit } : b.unit === 'token'
+      ? { unit: b.unit, tokenPrices: tokenPrices(m.pricing) } : b;
+    return {
+      ...coreFields(m),
+      charPrice: b.unit === 'character' ? { kind: 'usd', usd: perMillion(b.usd) } : null,
+      billing,
+    };
+  }
 
-export const AUDIO = {
-  workload: AUDIO_WORKLOAD,
-  includes: m => onCapabilityPage('audio', m),
-  rowOf: audioRow,
-  sortKeys: { charPrice: r => r.charPrice },
-};
-
-// Audio adds `charPrice` (a Price, USD per 1M characters, or null when the
-// Model isn't billed per character) and `billing`: its unit, as billingOf,
-// with the per-second rate (`usd`) or the token prices (`tokenPrices`, USD
-// per 1M tokens: input, output, audioInput, audioOutput, those the API gives).
-function audioRow(m) {
-  const b = billingOf(m);
-  const billing = b.unit === 'character' ? { unit: b.unit } : b.unit === 'token'
-    ? { unit: b.unit, tokenPrices: tokenPrices(m.pricing) } : b;
   return {
-    ...coreFields(m),
-    charPrice: b.unit === 'character' ? { kind: 'usd', usd: perMillion(b.usd) } : null,
-    billing,
+    workload,
+    includes,
+    rowOf: audioRow,
+    sortKeys: { charPrice: r => r.charPrice },
   };
 }
 
