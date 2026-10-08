@@ -1,12 +1,14 @@
 // The shell: fetching, tabs, filters and rendering around the pure core
 // (core.js). The shared table lives in table.js.
-import { buildPages, WORKLOADS, workloadValues } from './core.js';
-import { loadSettings, saveSettings, clearSaved, loadTheme, saveTheme } from './store.js';
-import { videoPage } from './video-page.js';
-import { imagePage } from './image-page.js';
-import { CORE_COLUMNS, COST_COLUMN, BADGES, tableHtml, attachTable, fmtUsd, esc, extraPriceLines, costCell } from './table.js';
-import { DECISIONS_VIEW } from './decisions-view.js';
-import { AUDIO_COLUMNS } from './audio-view.js';
+import { buildPages } from './core.js';
+import { browserStorage, loadSettings, saveSettings, clearSaved, loadTheme, saveTheme } from './store.js';
+import { fetchJson } from './fetch-json.js';
+import { CORE_COLUMNS, COST_COLUMN, registerBadges, tableHtml, attachTable, fmtUsd, esc, extraPriceLines, reasonHint } from './table.js';
+import { imageView } from './image-view.js';
+import { audioView } from './audio-view.js';
+import { videoView } from './video-view.js';
+import { transcriptionView } from './transcription-view.js';
+import { decisionsView } from './decisions-view.js';
 
 const CATALOGUE_URL = 'https://openrouter.ai/api/v1/models?output_modalities=all';
 
@@ -24,47 +26,66 @@ const CODE_COLUMNS = [
   { key: 'output', label: 'Output /1M', title: 'USD per 1M output tokens (base tier); hover a price for cache, reasoning and web-search prices', cell: r => priceCell(r.prices.output, extraPriceLines(r.extraPrices)) },
 ];
 
-// Hash -> page id (the key buildPages returns rows under), tab label, and the
-// page's columns after the core ones. A page with a Workload in the core
-// (WORKLOADS) gets its inputs and the cost column automatically.
+// Browser storage, or null where it's missing or blocked; store.js guards every access.
+const storage = browserStorage();
+
+/**
+ * What every Capability page's view (js/<page>-view.js) is given.
+ * @typedef {{rerender: (opts?: {keepOrder?: boolean}) => void, storage: Storage|null}} ViewShell
+ *
+ * A page view is {id, label, columns?, intro?, notice?, onShow?, sources?,
+ * badges?, controls?, defaultSort?}: `id` is the key buildPages returns its
+ * rows under; `columns` follow the core ones (a page with a Workload also
+ * gets the cost column); `intro` and `notice()` are html above the table;
+ * `onShow()` runs each time the tab is shown (to fetch extra pricing data
+ * once); `sources()` adds that data to the core's sources; `badges` are its
+ * rows' own badge renderers; `controls` the ids of filter controls it shows.
+ * `rerender({keepOrder: true})` redraws without re-sorting, for data that
+ * streams in while the viewer may be reading.
+ */
+const shell = { rerender: opts => render(opts), storage };
+
+// Hash -> page view, in tab order.
 const PAGES = {
   new: { id: 'whatsNew', label: "What's new" },
   code: { id: 'code', label: 'Code', columns: CODE_COLUMNS, defaultSort: { key: 'codingIndex', dir: 'desc' }, controls: ['reasoningOnlyLabel'] },
-  image: imagePage(() => render()),
-  audio: { id: 'audio', label: 'Audio', columns: AUDIO_COLUMNS },
-  video: videoPage(() => render()),
-  transcription: { id: 'transcription', label: 'Transcription', columns: [{ key: 'perMinute', label: 'Per minute', title: 'USD per minute of audio; "—" when it can\'t be computed (hover for why)', cell: r => r.perMinute.kind === 'usd' ? `<td class="num">${fmtUsd(r.perMinute.usd)}</td>` : costCell(r.perMinute) }] },
-  decisions: { id: 'decisions', label: 'Decisions', ...DECISIONS_VIEW },
+  image: imageView(shell),
+  audio: audioView(shell),
+  video: videoView(shell),
+  transcription: transcriptionView(shell),
+  decisions: decisionsView(shell),
   all: { id: 'allModels', label: 'All models', columns: ALL_MODELS_COLUMNS },
 };
 const DEFAULT_HASH = 'new';
 const DEFAULT_NEW_WINDOW_DAYS = 30;
 
 // What's new badges each Model with the Capability pages it appears on (page
-// ids from the core), each a link to that page's tab.
+// ids from the core), each a link to that page's tab. Pages' own badges are
+// registered alongside.
 const HASH_OF_PAGE = Object.fromEntries(Object.entries(PAGES).map(([hash, p]) => [p.id, hash]));
-BADGES.pages = ids => ids.map(id =>
-  `<a class="badge page" href="#${HASH_OF_PAGE[id]}" title="appears on the ${esc(PAGES[HASH_OF_PAGE[id]].label)} page">` +
-  `${esc(PAGES[HASH_OF_PAGE[id]].label)}</a>`).join('');
+registerBadges({
+  pages: ids => ids.map(id =>
+    `<a class="badge page" href="#${HASH_OF_PAGE[id]}" title="appears on the ${esc(PAGES[HASH_OF_PAGE[id]].label)} page">` +
+    `${esc(PAGES[HASH_OF_PAGE[id]].label)}</a>`).join(''),
+});
+for (const page of Object.values(PAGES)) registerBadges(page.badges || {});
 
 // The core's settings as a first-time viewer gets them; filters and sort
 // carry across tabs. A null sort (or a key the page lacks) means the page's
-// own default order. `workloads` holds each page's Workload values by page id
-// (see WORKLOADS); an absent page uses its inputs' defaults.
+// own default order. `workloads` holds each page's Workload values by page
+// id; an absent page uses its inputs' defaults.
 // Every key here is remembered in the browser (store.js), so a new setting
 // only needs adding here.
 const DEFAULT_SETTINGS = { author: '', search: '', hideFree: false, reasoningOnly: false,
   newWindowDays: DEFAULT_NEW_WINDOW_DAYS, sort: null, workloads: {} };
-
-// Browser storage, or null where it's missing or blocked (even reading
-// `localStorage` can throw then); store.js guards every access besides.
-const storage = (() => { try { return window.localStorage; } catch { return null; } })();
 
 const state = {
   catalogue: null, loadedAt: null, loading: false,
   settings: loadSettings(storage, DEFAULT_SETTINGS),
   theme: loadTheme(storage),   // 'light', 'dark', or null to follow the system
   rows: [], columns: [],   // what the table is showing now
+  shown: null,             // {hash, ids}: the page and row order last shown
+  workloadInputs: [],      // the Workload panel's inputs
 };
 
 const $ = id => document.getElementById(id);
@@ -76,11 +97,7 @@ async function loadCatalogue() {
   $('retry').disabled = true;
   $('status').textContent = 'loading…';
   try {
-    const res = await fetch(CATALOGUE_URL);
-    if (!res.ok) throw new Error(`OpenRouter answered ${res.status} ${res.statusText}`.trim());
-    const body = await res.json();
-    if (!Array.isArray(body?.data)) throw new Error('OpenRouter sent an unexpected response');
-    state.catalogue = body;
+    state.catalogue = await fetchJson(CATALOGUE_URL, b => Array.isArray(b?.data));
     state.loadedAt = Date.now();
     $('error').hidden = true;
   } catch (err) {
@@ -101,37 +118,37 @@ function currentHash() {
   return PAGES[h] ? h : DEFAULT_HASH;
 }
 
-function render() {
-  const hash = currentHash();
+// Rendering re-sorts the table, except with `keepOrder` (data arriving
+// without the viewer doing anything): then the rows on screen keep their
+// places while their values update (user story 48).
+function render({ keepOrder = false } = {}) {
+  const hash = currentHash(), view = PAGES[hash];
   for (const a of document.querySelectorAll('#tabs a')) {
     if (a.getAttribute('href') === '#' + hash) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
   }
   renderStatus();
-  renderWorkload(PAGES[hash].id);
-  PAGES[hash].onShow?.();   // a page's extra pricing data, fetched on first view
+  view.onShow?.();   // a page's extra pricing data, fetched on first view
   for (const el of document.querySelectorAll('[data-page-control]')) {
-    el.hidden = !(PAGES[hash].controls || []).includes(el.id);
+    el.hidden = !(view.controls || []).includes(el.id);
   }
+  const sources = Object.assign({ catalogue: state.catalogue || { data: [] } },
+    ...Object.values(PAGES).map(p => p.sources?.()));
+  const held = keepOrder && state.shown?.hash === hash ? { [view.id]: state.shown.ids } : undefined;
+  const pages = buildPages(sources, { ...state.settings, holdOrder: held }, Date.now());
+  const workload = pages.workloads[view.id];
+  renderWorkload(view.id, workload);
   const page = $('page');
   if (!state.catalogue) {
     page.innerHTML = state.loading ? '<p class="placeholder">Loading the catalogue…</p>' : '';
     return;
   }
-  const sources = Object.assign({ catalogue: state.catalogue }, ...Object.values(PAGES).map(p => p.sources?.()));
-  const pages = buildPages(sources, state.settings, Date.now());
   renderAuthors(pages.authors);
-  const rows = pages[PAGES[hash].id];
-  if (!rows) {
-    state.rows = [];
-    page.innerHTML = `<p class="placeholder">The ${esc(PAGES[hash].label)} page isn't built yet. ` +
-      `See <a href="#all">All models</a> for the whole catalogue.</p>`;
-    return;
-  }
+  const rows = pages[view.id];
   state.rows = rows;
-  state.columns = [...CORE_COLUMNS, ...(PAGES[hash].columns || []),
-    ...(WORKLOADS[PAGES[hash].id] ? [COST_COLUMN] : [])];
-  page.innerHTML = (PAGES[hash].intro || '') + (PAGES[hash].notice?.() || '') + tableHtml(rows, state.columns, currentSort());
+  state.shown = { hash, ids: rows.map(r => r.id) };
+  state.columns = [...CORE_COLUMNS, ...(view.columns || []), ...(workload ? [COST_COLUMN] : [])];
+  page.innerHTML = (view.intro || '') + (view.notice?.() || '') + tableHtml(rows, state.columns, currentSort());
 }
 
 // The sort the table is showing: the viewer's, if this page has that column,
@@ -142,21 +159,26 @@ function currentSort() {
   return page.defaultSort || { key: 'created', dir: 'desc' };
 }
 
-// The Workload panel: the current page's inputs, from its declaration in the
-// core. Rebuilt only when the page changes, so typing keeps focus.
-function renderWorkload(pageId) {
-  const panel = $('workload'), inputs = WORKLOADS[pageId];
-  panel.hidden = !inputs;
-  if (!inputs || panel.dataset.page === pageId) return;
-  panel.dataset.page = pageId;
-  const values = workloadValues(pageId, state.settings);
-  panel.innerHTML = '<span class="wl-title" title="the work each Model is costed for">Workload</span>' +
-    inputs.map(i => `<label>${esc(i.label)} ${i.options
-      ? `<select data-workload="${esc(i.key)}">${i.options.map(o =>
-          `<option value="${esc(o.value)}"${o.value === values[i.key] ? ' selected' : ''}>${esc(o.label)}</option>`).join('')}</select>`
-      : `<input data-workload="${esc(i.key)}" type="number" min="${i.min ?? 0}" step="${i.step ?? 'any'}" ` +
-        `value="${values[i.key]}" inputmode="decimal"><span class="wl-hint" data-hint="${esc(i.key)}">${fmtCount(values[i.key])}</span>`
-    }</label>`).join('');
+// The Workload panel: the current page's inputs and values, from buildPages.
+// Rebuilt only when the page changes, so typing keeps focus; the count hints
+// follow the values in use.
+function renderWorkload(pageId, workload) {
+  const panel = $('workload');
+  panel.hidden = !workload;
+  if (!workload) return;
+  const { inputs, values } = workload;
+  if (panel.dataset.page !== pageId) {
+    panel.dataset.page = pageId;
+    panel.innerHTML = '<span class="wl-title" title="the work each Model is costed for">Workload</span>' +
+      inputs.map(i => `<label>${esc(i.label)} ${i.options
+        ? `<select data-workload="${esc(i.key)}">${i.options.map(o =>
+            `<option value="${esc(o.value)}"${o.value === values[i.key] ? ' selected' : ''}>${esc(o.label)}</option>`).join('')}</select>`
+        : `<input data-workload="${esc(i.key)}" type="number" min="${i.min ?? 0}" step="${i.step ?? 'any'}" ` +
+          `value="${values[i.key]}" inputmode="decimal"><span class="wl-hint" data-hint="${esc(i.key)}"></span>`
+      }</label>`).join('');
+    state.workloadInputs = inputs;
+  }
+  for (const hint of panel.querySelectorAll('[data-hint]')) hint.textContent = fmtCount(values[hint.dataset.hint]);
 }
 
 // 3000000 -> "3M", for reading big counts at a glance.
@@ -167,15 +189,13 @@ function fmtCount(n) {
 }
 
 function setWorkload(key, raw) {
-  const pageId = $('workload').dataset.page;
-  const input = WORKLOADS[pageId].find(i => i.key === key);
+  const panel = $('workload'), pageId = panel.dataset.page;
+  const input = state.workloadInputs.find(i => i.key === key);
   // Choices keep their declared value (which may not be a string).
   const value = input.options ? input.options.find(o => String(o.value) === raw)?.value : raw;
   state.settings.workloads = { ...state.settings.workloads,
     [pageId]: { ...state.settings.workloads[pageId], [key]: value } };
   saveSettings(storage, state.settings);
-  const hint = $('workload').querySelector(`[data-hint="${CSS.escape(key)}"]`);
-  if (hint) hint.textContent = fmtCount(workloadValues(pageId, state.settings)[key]);
   render();
 }
 
@@ -202,8 +222,7 @@ function renderStatus() {
 function priceCell(p, extra = []) {
   const more = extra.length ? 'Also (per 1M tokens unless noted): ' + extra.join(', ') : '';
   const title = t => ` title="${esc([t, more].filter(Boolean).join('\n'))}"`;
-  if (p.kind === 'variable') return `<td class="num note"${title('price depends on the model the router picks')}>variable</td>`;
-  if (p.kind === 'unpriced') return `<td class="num note"${title('OpenRouter lists no token price for this model')}>unpriced</td>`;
+  if (p.kind === 'reason') return `<td class="num note"${title(reasonHint(p.reason))}>${esc(p.reason)}</td>`;
   return `<td class="num${more ? ' more' : ''}"${more ? title('') : ''}>${fmtUsd(p.usd)}</td>`;
 }
 

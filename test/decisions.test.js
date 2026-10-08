@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { buildPages, WORKLOADS, workloadValues } from '../js/core.js';
+import { buildPages } from '../js/core.js';
 
 // Real /api/v1/models?output_modalities=all response captured 2026-10-08,
 // trimmed to every Decisions Model (15, one a ~-latest alias) plus one text
@@ -29,18 +29,21 @@ test('a Decisions Model accepts images exactly when image is among its input mod
     ['cloudflare/clef', 'cloudflare/clef-flash', 'openai/gpt-6-luna-decisions', 'perplexity/pplx-decider-v1.1-27b']);
 });
 
-test('a Decisions Model is free when it costs nothing: a :free variant, or listed at $0', () => {
-  assert.equal(row('inception/mercury-decide:free').free, true);
-  assert.equal(row('respan/span-01-lite:free').free, true);
-  // Decisions are billed by the token, so a $0 listing is a genuine $0.
-  assert.equal(row('respan/span-01-lite').free, true);
-  assert.equal(row('respan/span-01').free, false);   // $0.02 per 1M input tokens
-  assert.equal(row('typesafe/jev-1.13').free, false);
+test('a Decisions Model is "no charge" when listed at $0; "free" stays the :free variant badge', () => {
+  assert.equal(row('inception/mercury-decide:free').zeroPrice, true);
+  assert.equal(row('respan/span-01-lite:free').zeroPrice, true);
+  // Decisions are billed by the token, so a $0 listing is a genuine $0 ...
+  assert.equal(row('respan/span-01-lite').zeroPrice, true);
+  // ... but only a :free variant carries the "free" badge.
+  assert.equal(row('respan/span-01-lite').badges.free, false);
   assert.equal(row('inception/mercury-decide:free').badges.free, true);
+  assert.equal(row('respan/span-01').zeroPrice, false);   // $0.02 per 1M input tokens
+  assert.equal(row('typesafe/jev-1.13').zeroPrice, false);
+  assert.ok(decisions().every(r => !('free' in r)));
 });
 
 test('Decisions costs each Model for the default Workload of 1,000 decisions × 2,000 input tokens', () => {
-  assert.deepEqual(workloadValues('decisions', {}), { decisions: 1000, tokensPerDecision: 2000 });
+  assert.deepEqual(buildPages({ catalogue }, {}, NOW).workloads.decisions.values, { decisions: 1000, tokensPerDecision: 2000 });
   // 2,000,000 input tokens at the input price; decision models have no output price.
   assert.deepEqual(row('cloudflare/clef').cost, { kind: 'usd', usd: 0.48 });                    // $0.24 /1M
   assert.deepEqual(row('perplexity/pplx-decider-v1.1-27b').cost, { kind: 'usd', usd: 0.04 });    // $0.02 /1M
@@ -65,16 +68,16 @@ test('Decisions sorts by cost cheapest first, free Models leading', () => {
   assert.equal(ids.at(-1), 'cloudflare/clef');
 });
 
-test('Decisions can be sorted by the accepts-images and free columns', () => {
+test('Decisions can be sorted by the accepts-images and no-charge columns', () => {
   const images = decisions({ sort: { key: 'acceptsImages', dir: 'desc' } }).map(r => r.id);
   assert.deepEqual(images.slice(0, 4).sort(),
     ['cloudflare/clef', 'cloudflare/clef-flash', 'openai/gpt-6-luna-decisions', 'perplexity/pplx-decider-v1.1-27b']);
-  const free = decisions({ sort: { key: 'free', dir: 'desc' } }).map(r => r.id);
+  const free = decisions({ sort: { key: 'zeroPrice', dir: 'desc' } }).map(r => r.id);
   assert.deepEqual(free.slice(0, 3),
     ['inception/mercury-decide:free', 'respan/span-01-lite:free', 'respan/span-01-lite']);
 });
 
 test('Decisions declares its Workload inputs for the shell', () => {
-  assert.deepEqual(WORKLOADS.decisions.map(i => [i.key, i.default]),
+  assert.deepEqual(buildPages({ catalogue }, {}, NOW).workloads.decisions.inputs.map(i => [i.key, i.default]),
     [['decisions', 1000], ['tokensPerDecision', 2000]]);
 });

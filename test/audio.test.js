@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { buildPages, WORKLOADS, workloadValues } from '../js/core.js';
+import { buildPages } from '../js/core.js';
 import { loadSettings, saveSettings } from '../js/store.js';
 
 // The shared catalogue fixture plus test/fixtures/audio-catalogue.json: more
@@ -112,8 +112,9 @@ test('sorting by cost puts character costs first, then every reason', () => {
 });
 
 test('the Audio Workload is declared for the shell, defaulting to 100K characters', () => {
-  assert.deepEqual(WORKLOADS.audio.map(i => [i.key, i.default]), [['characters', 100_000]]);
-  assert.deepEqual(workloadValues('audio', { workloads: { audio: { characters: -3 } } }), { characters: 0 });
+  const workload = settings => buildPages({ catalogue }, settings, NOW).workloads.audio;
+  assert.deepEqual(workload({}).inputs.map(i => [i.key, i.default]), [['characters', 100_000]]);
+  assert.deepEqual(workload({ workloads: { audio: { characters: -3 } } }).values, { characters: 0 });
 });
 
 test('the Audio Workload is remembered across loads', () => {

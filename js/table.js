@@ -1,6 +1,7 @@
 // The table every page shares: core columns, badges, sortable headers, the
 // expandable description row and click-to-copy ids. Pages plug in their own
 // columns after the core ones; row order always comes from the core.
+import { REASONS } from './pricing.js';
 
 /**
  * A column: {key, label, title?, left?, defaultDir?, cell(row) -> '<td…>' html}.
@@ -24,16 +25,20 @@ export const COST_COLUMN = {
   cell: r => costCell(r.cost),
 };
 
-// Hover text for each cost-unavailable reason (core.js REASONS).
+// Hover text for each reason a price or cost is unavailable (js/pricing.js).
 const REASON_HINTS = {
-  'per-token pricing': 'billed by the token, so no cost for this Workload',
-  'unpriced': 'OpenRouter lists no price for this model',
-  'unit unclear': "the price's unit is unclear, so no cost is computed",
-  'variable': 'price depends on the model the router picks',
-  'pricing data not loaded': "this page's pricing data hasn't loaded",
-  'priced by resolution': 'the rate depends on the output resolution, which the Workload doesn\'t set',
+  [REASONS.perToken]: 'billed by the token, so no cost for this Workload',
+  [REASONS.unpriced]: 'OpenRouter lists no price for this model',
+  [REASONS.unitUnclear]: "the price's unit is unclear, so no cost is computed",
+  [REASONS.variable]: 'price depends on the model the router picks',
+  [REASONS.notLoaded]: "this page's pricing data hasn't loaded",
+  [REASONS.byResolution]: 'the rate depends on the output resolution, which the Workload doesn\'t set',
 };
 
+/** The hover text explaining a reason. */
+export const reasonHint = reason => REASON_HINTS[reason] || reason;
+
+/** A cell for a Price or Cost: the USD amount, or "—" and the reason (hover for why). */
 export function costCell(c) {
   if (c.kind === 'usd') return `<td class="num cost">${fmtUsd(c.usd)}</td>`;
   const hint = REASON_HINTS[c.reason];
@@ -43,16 +48,21 @@ export function costCell(c) {
 
 /**
  * Badge renderers, keyed by the name in a row's `badges`. Each turns the
- * badge's value into html, or '' when the badge doesn't apply. Later pages
- * add theirs here (new, reasoning, tiered, …).
+ * badge's value into html, or '' when the badge doesn't apply. These are
+ * the shared ones; the shell registers pages' own (registerBadges).
  */
-export const BADGES = {
+const BADGES = {
   new: v => v ? '<span class="badge new" title="added within the &quot;new&quot; window">new</span>' : '',
   free: v => v ? '<span class="badge free">free</span>' : '',
   expires: v => v ? `<span class="badge warn" title="OpenRouter has scheduled this model for removal">expires ${esc(v)}</span>` : '',
   reasoning: v => v ? '<span class="badge reasoning" title="supports reasoning">reasoning</span>' : '',
   tiered: tiers => tiers ? `<span class="badge tiered" tabindex="0" title="${esc(tiersTitle(tiers))}">tiered</span>` : '',
 };
+
+/** Add badge renderers ({name: value => html}) for rows' `badges`. */
+export function registerBadges(renderers) {
+  Object.assign(BADGES, renderers);
+}
 
 // The hover text for a tiered badge: each tier's higher rates.
 function tiersTitle(tiers) {
@@ -77,9 +87,9 @@ export function extraPriceLines(extra = {}) {
   return lines;
 }
 
-/** A Price as plain text: "$1.25", "variable" or "unpriced". */
+/** A Price as plain text: "$1.25", or its reason ("variable", "unpriced", …). */
 export function fmtPrice(p) {
-  return p.kind === 'usd' ? fmtUsd(p.usd) : p.kind;
+  return p.kind === 'usd' ? fmtUsd(p.usd) : p.reason;
 }
 
 const expanded = new Set();   // ids whose description is showing

@@ -2,17 +2,19 @@
 // images at a resolution, each at the Model's per-image price for the closest
 // resolution it offers. Prices come from OpenRouter's image-pricing data
 // (`sources.imagePricing`, fetched by the shell when the tab is first opened;
-// see image-pricing.js), never the catalogue's per-token `image_output`. A
+// see image-view.js), never the catalogue's per-token `image_output`. A
 // page definition for core.js's shared pipeline (see the comment above the
 // page definitions there). Pure: no DOM, no network.
+import { reason, usd } from './pricing.js';
 
 /**
- * The Image page definition. The core passes in what the page needs from it,
- * so this module imports nothing.
+ * The Image page definition. Rows add `perImage`, the per-image Price used
+ * for the Workload's resolution, and `perImageAt`, the resolution that price
+ * is for ('1K', '1.5K', '768' px, …; null for a flat price or none).
  *
- * @param {{REASONS: object, coreFields: (m: object) => object, includes: (m: object) => boolean}} core
+ * @param {import('./core.js').PageCore} core
  */
-export function imagePage({ REASONS, coreFields, includes }) {
+export function imagePage({ coreFields, includes }) {
   const workload = {
     id: 'image',
     inputs: [
@@ -21,11 +23,15 @@ export function imagePage({ REASONS, coreFields, includes }) {
         options: ['1K', '2K', '4K'].map(v => ({ value: v, label: v })) },
     ],
     cost: (m, w, sources) => {
-      const p = perImagePrice(m, w.resolution, sources.imagePricing);
-      return p.reason ? { kind: 'reason', reason: REASONS[p.reason] } : { kind: 'usd', usd: w.images * p.usd };
+      const { price } = perImagePrice(m, w.resolution, sources.imagePricing);
+      return price.kind === 'usd' ? usd(w.images * price.usd) : price;
     },
   };
-  return { workload, includes, rowOf: m => coreFields(m), sortKeys: {} };
+  function imageRow(m, sources, w) {
+    const { price, at } = perImagePrice(m, w.resolution, sources.imagePricing);
+    return { ...coreFields(m), perImage: price, perImageAt: at };
+  }
+  return { workload, includes, rowOf: imageRow, sortKeys: { perImage: r => r.perImage } };
 }
 
 /**
@@ -45,48 +51,52 @@ export function imagePage({ REASONS, coreFields, includes }) {
  * its own. The price used is the one at the priced resolution closest to the
  * Workload's (the larger on a tie).
  *
- * @returns {{usd: number}} USD per image, or {{reason: string}} naming a
- *   REASONS key: notLoaded (no data yet for this Model), unpriced (no image
+ * @returns {{price, at: string|null}} the Price per image and the resolution
+ *   it's for (null for a flat price or no price). With no USD price, the
+ *   reason is notLoaded (no data yet for this Model), unpriced (no image
  *   price), variable (a router), perToken (billed per token), unitUnclear
  *   (per megapixel, or variants that aren't resolutions, such as quality
  *   tiers, or that can't be placed).
  */
 function perImagePrice(model, resolution, imagePricing) {
-  if (!imagePricing?.models?.data) return { reason: 'notLoaded' };
+  if (!imagePricing?.models?.data) return none('notLoaded');
   if (!imagePricing.models.data.some(m => m.id === model.id)) {
-    return { reason: Number(model.pricing?.prompt) < 0 ? 'variable' : 'unpriced' };
+    return none(Number(model.pricing?.prompt) < 0 ? 'variable' : 'unpriced');
   }
   const resource = imagePricing.endpoints?.[model.id];
-  if (!resource) return { reason: 'notLoaded' };
+  if (!resource) return none('notLoaded');
   const endpoint = (resource.endpoints || []).find(e => outputPrices(e).length);
-  if (!endpoint) return { reason: 'unpriced' };
+  if (!endpoint) return none('unpriced');
   const prices = outputPrices(endpoint);
-  if (prices.some(p => p.unit === 'token')) return { reason: 'perToken' };
-  if (prices.some(p => p.unit !== 'image')) return { reason: 'unitUnclear' };
+  if (prices.some(p => p.unit === 'token')) return none('perToken');
+  if (prices.some(p => p.unit !== 'image')) return none('unitUnclear');
 
   const base = prices.filter(p => p.variant == null);
-  const sized = prices.filter(p => p.variant != null).map(p => ({ size: sizeOf(p.variant), usd: p.cost_usd }));
-  if (base.length > 1 || sized.some(p => p.size === null)) return { reason: 'unitUnclear' };
+  const sized = prices.filter(p => p.variant != null)
+    .map(p => ({ size: sizeOf(p.variant), usd: p.cost_usd, at: String(p.variant).toUpperCase() }));
+  if (base.length > 1 || sized.some(p => p.size === null)) return none('unitUnclear');
   if (base.length) {
-    if (!sized.length) return priceOf(base[0].cost_usd);
+    if (!sized.length) return priceOf(base[0].cost_usd, null);
     // The un-sized price is the smallest supported resolution's, which must
     // lack a variant of its own and sit below every sized one.
-    const supported = (endpoint.supported_parameters?.resolution?.values || []).map(sizeOf);
-    const smallest = Math.min(...supported.filter(s => s !== null));
-    if (!Number.isFinite(smallest) || sized.some(p => p.size <= smallest)) return { reason: 'unitUnclear' };
-    sized.push({ size: smallest, usd: base[0].cost_usd });
+    const supported = (endpoint.supported_parameters?.resolution?.values || [])
+      .map(v => ({ size: sizeOf(v), at: String(v).toUpperCase() })).filter(v => v.size !== null);
+    const smallest = supported.reduce((a, b) => (b.size < a.size ? b : a), { size: Infinity });
+    if (!Number.isFinite(smallest.size) || sized.some(p => p.size <= smallest.size)) return none('unitUnclear');
+    sized.push({ ...smallest, usd: base[0].cost_usd });
   }
   const want = sizeOf(resolution);
   const closest = sized.reduce((best, p) => {
     const d = Math.abs(p.size - want), bd = Math.abs(best.size - want);
     return d < bd || (d === bd && p.size > best.size) ? p : best;
   });
-  return priceOf(closest.usd);
+  return priceOf(closest.usd, closest.at);
 }
 
 const outputPrices = endpoint => (endpoint.pricing || []).filter(p => p.billable === 'output_image');
 
-const priceOf = usd => typeof usd === 'number' && usd > 0 ? { usd } : { reason: 'unpriced' };
+const none = r => ({ price: reason(r), at: null });
+const priceOf = (v, at) => typeof v === 'number' && v > 0 ? { price: usd(v), at } : none('unpriced');
 
 // A resolution in K (1024 px): "1K"/"1.5k" -> 1/1.5, "768" (pixels) -> 0.75;
 // anything else (e.g. "high_resolution", "low_1k") -> null.

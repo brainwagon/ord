@@ -1,21 +1,22 @@
-// The Video page's shell: its columns, its "silent" badge, and the
-// video-models listing, fetched the first time the tab is opened (with a
-// Retry when it fails). The pricing itself is in the core (core.js,
-// video-pricing.js).
-import { BADGES, esc, fmtUsd } from './table.js';
+// The Video page's part of the shell (app.js): its rate columns, its "silent"
+// badge, and the video-models listing, fetched the first time the tab is
+// opened (with a Retry when it fails). The pricing itself is in the core
+// (js/video.js).
+import { esc, fmtUsd } from './table.js';
+import { fetchJson } from './fetch-json.js';
 
 const VIDEO_MODELS_URL = 'https://openrouter.ai/api/v1/videos/models';
-
-BADGES.silent = v => v ? '<span class="badge" title="makes video without an audio track">silent</span>' : '';
 
 // A per-second rate cell; hover lists the listing's raw SKUs and any minimum.
 function rateCell(r, rate) {
   const lines = [];
   if (r.minimumUsd) lines.push(`minimum ${fmtUsd(r.minimumUsd)} per clip`);
   if (r.skus) lines.push('OpenRouter pricing_skus:', ...Object.entries(r.skus).map(([k, v]) => `${k}: ${v}`));
-  const title = lines.length ? ` title="${esc(lines.join('\n'))}"` : '';
-  if (rate.kind === 'usd') return `<td class="num${lines.length ? ' more' : ''}"${title}>${fmtUsd(rate.usd)}</td>`;
-  return `<td class="num note"${title}>—</td>`;
+  if (rate.kind === 'usd') {
+    const title = lines.length ? ` title="${esc(lines.join('\n'))}"` : '';
+    return `<td class="num${lines.length ? ' more' : ''}"${title}>${fmtUsd(rate.usd)}</td>`;
+  }
+  return `<td class="num note" title="${esc([rate.reason, ...lines].join('\n'))}">—</td>`;
 }
 
 const COLUMNS = [
@@ -25,13 +26,15 @@ const COLUMNS = [
     cell: r => rateCell(r, r.rates.withoutAudio) },
 ];
 
+const BADGES = {
+  silent: v => v ? '<span class="badge" title="makes video without an audio track">silent</span>' : '',
+};
+
 /**
- * The Video page's entry in the shell's page table. `rerender` is called when
- * the listing arrives or fails.
- * @returns {{id, label, columns, onShow: () => void, notice: () => string,
- *   sources: () => {videoModels?: object}}}
+ * The Video page's view (see the page views in app.js).
+ * @param {import('./app.js').ViewShell} shell
  */
-export function videoPage(rerender) {
+export function videoView({ rerender }) {
   let data = null, status = 'idle', error = '';   // idle | loading | loaded | failed
 
   async function load() {
@@ -39,17 +42,13 @@ export function videoPage(rerender) {
     status = 'loading';
     rerender();
     try {
-      const res = await fetch(VIDEO_MODELS_URL);
-      if (!res.ok) throw new Error(`OpenRouter answered ${res.status} ${res.statusText}`.trim());
-      const body = await res.json();
-      if (!Array.isArray(body?.data)) throw new Error('OpenRouter sent an unexpected response');
-      data = body;
+      data = await fetchJson(VIDEO_MODELS_URL, b => Array.isArray(b?.data));
       status = 'loaded';
     } catch (err) {
       error = err.message;
       status = 'failed';
     }
-    rerender();
+    rerender();   // one batch: the table re-sorts once, now
   }
 
   document.addEventListener('click', e => {
@@ -60,9 +59,10 @@ export function videoPage(rerender) {
     id: 'video',
     label: 'Video',
     columns: COLUMNS,
+    badges: BADGES,
     onShow: () => { if (status === 'idle') load(); },
     notice: () => {
-      if (status === 'loading') return '<p class="placeholder">Loading video prices…</p>';
+      if (status === 'loading') return '<p class="placeholder" role="status">loading prices…</p>';
       if (status !== 'failed') return '';
       return `<div class="error video-error"><p>Couldn't load video prices from OpenRouter: ${esc(error)}.</p>` +
         '<button type="button" data-video-retry>Retry</button></div>';
