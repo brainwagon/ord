@@ -1,13 +1,16 @@
 // The dashboard's pure core: raw OpenRouter responses + viewer settings + the
 // current time in, the rows each page shows out. No DOM, no network.
-import { IMAGE_INPUTS, perImagePrice } from './image.js';
+import { videoRates } from './video-pricing.js';
+import { transcriptionPage } from './transcription.js';
+import { decisionsPage } from './decisions.js';
+import { audioPage } from './audio.js';
+import { imagePage } from './image.js';
 
 /**
  * The core's single public entry point.
  *
- * Returns ordered rows per page, keyed by page id. Today `allModels`,
- * `whatsNew` and `code`; later pages add keys alongside them (`image`, `audio`,
- * `video`, `transcription`, `decisions`). A page with no key isn't built yet.
+ * Returns ordered rows per page, keyed by page id: `allModels`, `whatsNew`,
+ * `code`, `image`, `transcription`, `decisions`, `audio` and `video`.
  * What's new lists every New model in the catalogue (any kind, aliases
  * excluded); its rows add `badges.pages`, the ids of every Capability page
  * the Model appears on (see CAPABILITY_PAGES), in tab order.
@@ -32,7 +35,15 @@ import { IMAGE_INPUTS, perImagePrice } from './image.js';
  * `reasoning` field) and `tiered`: null, or the higher-rate tiers
  * [{minPromptTokens, input, output, extraPrices}].
  *
- * Every page with a Workload (WORKLOADS; today Code) adds `cost`, a Cost:
+ * Transcription (js/transcription.js) adds `perMinute`, a Cost per minute of
+ * audio; its Workload is minutes of audio (default 60), costed per second for
+ * Models with one input price and no output price, "unit unclear" above
+ * $0.01/s, and per-token for Models with both prices.
+ *
+ * Audio (js/audio.js) adds `charPrice` (USD per 1M characters, or null)
+ * and `billing` (how the Model is billed); its Workload is characters to speak.
+ *
+ * Every page with a Workload (WORKLOADS; Code, Transcription, Decisions, Audio) adds `cost`, a Cost:
  * {kind: 'usd', usd} for the viewer's Workload, or {kind: 'reason', reason}
  * with one of REASONS. Code's cost is input tokens × `prompt` + output tokens
  * × `completion`, at the base tier. Sorting by cost puts USD amounts first,
@@ -45,7 +56,7 @@ import { IMAGE_INPUTS, perImagePrice } from './image.js';
  * (among equal known values), then newest first.
  *
  * @param {{catalogue: {data: object[]}}} sources raw API responses, as fetched
- *   (later: `videoModels`, `imagePricing` when loaded)
+ *   (plus `videoModels` and `imagePricing` once the shell has loaded them)
  * @param {{hideFree?: boolean, author?: string, search?: string, reasoningOnly?: boolean,
  *   sort?: {key: string, dir: 'asc'|'desc'}, newWindowDays?: number,
  *   workloads?: {[pageId: string]: {[inputKey: string]: any}}}} settings
@@ -69,6 +80,10 @@ export function buildPages(sources, settings, now) {
     whatsNew: buildPage(models.filter(isNew), settings, WHATS_NEW, isNew),
     code: buildPage(models, settings, CODE, isNew, sources),
     image: buildPage(models, settings, IMAGE, isNew, sources),
+    transcription: buildPage(models, settings, TRANSCRIPTION, isNew, sources),
+    decisions: buildPage(models, settings, DECISIONS, isNew, sources),
+    audio: buildPage(models, settings, AUDIO, isNew, sources),
+    video: buildPage(models, settings, VIDEO, isNew, sources),
   };
 }
 
@@ -173,24 +188,51 @@ const CODE = {
   defaultSort: { key: 'codingIndex', dir: 'desc' },
 };
 
-// Image: membership from the registry (image output). Workload: a number of
-// images at a resolution, each at the Model's per-image price for the closest
-// resolution it offers (js/image.js), from `sources.imagePricing`.
-const IMAGE_WORKLOAD = {
-  id: 'image',
-  inputs: IMAGE_INPUTS,
+// Video: membership from the registry (video output). Its prices come from
+// the video-models listing (`sources.videoModels`, fetched when the tab is
+// first opened), normalised to USD per second by video-pricing.js; the
+// catalogue's $0 video prices are never used. Workload: seconds of video, with
+// audio on or off, costed at the matching rate (and never below a Model's
+// minimum charge per clip).
+const VIDEO_WORKLOAD = {
+  id: 'video',
+  inputs: [
+    { key: 'seconds', label: 'Seconds of video', default: 8, step: 1 },
+    { key: 'audio', label: 'Audio', default: 'on', options: [{ value: 'on', label: 'on' }, { value: 'off', label: 'off' }] },
+  ],
   cost: (m, w, sources) => {
-    const p = perImagePrice(m, w.resolution, sources.imagePricing);
-    return p.reason ? reason(REASONS[p.reason]) : { kind: 'usd', usd: w.images * p.usd };
+    const v = videoRates(m.id, sources.videoModels);
+    const rate = toVideoPrice(w.audio === 'on' ? v.withAudio : v.withoutAudio);
+    if (rate.kind !== 'usd') return rate;
+    return { kind: 'usd', usd: w.seconds > 0 ? Math.max(rate.usd * w.seconds, v.minimumUsd) : 0 };
   },
 };
 
-const IMAGE = {
-  workload: IMAGE_WORKLOAD,
-  includes: CAPABILITY_PAGES.find(p => p.id === 'image').includes,
-  rowOf: coreFields,
-  sortKeys: {},
+const VIDEO = {
+  workload: VIDEO_WORKLOAD,
+  includes: CAPABILITY_PAGES.find(p => p.id === 'video').includes,
+  rowOf: videoRow,
+  sortKeys: { withAudio: r => r.rates.withAudio, withoutAudio: r => r.rates.withoutAudio },
 };
+
+// A video-pricing.js Rate as a Price ({kind: 'usd', usd} per second) or a Cost reason.
+const toVideoPrice = r => r.reason ? reason(REASONS[r.reason]) : { kind: 'usd', usd: r.usd };
+
+// Video rows add `rates: {withAudio, withoutAudio}` (USD per second, or a
+// reason), `minimumUsd` (the least a clip costs; 0 when none), `skus` (the
+// listing's raw pricing_skus, null until loaded) and badge `silent` (the
+// listing says the Model doesn't generate audio).
+function videoRow(m, sources) {
+  const core = coreFields(m), v = videoRates(m.id, sources.videoModels);
+  const listed = v.skus && sources.videoModels.data.find(x => x.id === m.id);
+  return {
+    ...core,
+    badges: { ...core.badges, silent: listed?.generate_audio === false },
+    rates: { withAudio: toVideoPrice(v.withAudio), withoutAudio: toVideoPrice(v.withoutAudio) },
+    minimumUsd: v.minimumUsd,
+    skus: v.skus,
+  };
+}
 
 // The default order for a page that doesn't give its own `defaultSort`.
 const NEWEST_FIRST = { key: 'created', dir: 'desc' };
@@ -214,7 +256,7 @@ function buildPage(models, settings, page, isNew, sources) {
     .filter(m => page.includeAliases || !m.alias_target)
     .filter(m => !page.includes || page.includes(m))
     .map(m => {
-      const row = page.rowOf(m);
+      const row = page.rowOf(m, sources);
       row.badges.new = isNew(m);
       if (costOf) row.cost = costOf(m);
       return row;
@@ -245,8 +287,21 @@ export const REASONS = Object.freeze({
   unitUnclear: 'unit unclear',       // a price whose unit can't be pinned down
   variable: 'variable',              // the API's -1: a router, priced by what it picks
   notLoaded: 'pricing data not loaded',  // the extra source this page needs is missing
+  byResolution: 'priced by resolution',  // the rate depends on a resolution the Workload doesn't set
 });
 const REASON_SET = new Set(Object.values(REASONS));
+
+// Transcription: minutes of audio, priced per second (js/transcription.js).
+const TRANSCRIPTION = transcriptionPage({ REASONS, coreFields, includes: CAPABILITY_PAGES.find(p => p.id === 'transcription').includes });
+
+// Decisions: a batch of decisions, priced on input tokens (js/decisions.js).
+const DECISIONS = decisionsPage({ coreFields, tokenCost, includes: CAPABILITY_PAGES.find(p => p.id === 'decisions').includes });
+
+// Audio: characters to speak, priced per character (js/audio.js).
+const AUDIO = audioPage({ REASONS, coreFields, includes: CAPABILITY_PAGES.find(p => p.id === 'audio').includes });
+
+// Image: a number of images at a resolution, priced per image (js/image.js).
+const IMAGE = imagePage({ REASONS, coreFields, includes: CAPABILITY_PAGES.find(p => p.id === 'image').includes });
 
 /**
  * Each page's Workload inputs, keyed by page id, for the shell to render. A
@@ -256,7 +311,7 @@ const REASON_SET = new Set(Object.values(REASONS));
  * `settings.workloads[pageId][key]`; missing or invalid ones mean the default.
  */
 export const WORKLOADS = Object.freeze(Object.fromEntries(
-  [CODE_WORKLOAD, IMAGE_WORKLOAD].map(w => [w.id, w.inputs])));
+  [CODE_WORKLOAD, IMAGE.workload, TRANSCRIPTION.workload, DECISIONS.workload, AUDIO.workload, VIDEO_WORKLOAD].map(w => [w.id, w.inputs])));
 
 /** A page's Workload values: the viewer's, with defaults for anything missing or invalid. */
 export function workloadValues(pageId, settings) {

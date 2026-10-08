@@ -1,14 +1,32 @@
-// Image pricing, part of the pure core (no DOM, no network): the Image
-// Workload's inputs and a Model's per-image price at the Workload's
-// resolution, from OpenRouter's image-pricing data. core.js plugs these into
-// the Image page; the tests reach them only through buildPages.
+// The Image page: image-output Models, costed for a Workload of a number of
+// images at a resolution, each at the Model's per-image price for the closest
+// resolution it offers. Prices come from OpenRouter's image-pricing data
+// (`sources.imagePricing`, fetched by the shell when the tab is first opened;
+// see image-pricing.js), never the catalogue's per-token `image_output`. A
+// page definition for core.js's shared pipeline (see the comment above the
+// page definitions there). Pure: no DOM, no network.
 
-/** The Image Workload's inputs (see WORKLOADS in core.js). */
-export const IMAGE_INPUTS = [
-  { key: 'images', label: 'Images', default: 10, step: 1 },
-  { key: 'resolution', label: 'Resolution', default: '1K',
-    options: ['1K', '2K', '4K'].map(v => ({ value: v, label: v })) },
-];
+/**
+ * The Image page definition. The core passes in what the page needs from it,
+ * so this module imports nothing.
+ *
+ * @param {{REASONS: object, coreFields: (m: object) => object, includes: (m: object) => boolean}} core
+ */
+export function imagePage({ REASONS, coreFields, includes }) {
+  const workload = {
+    id: 'image',
+    inputs: [
+      { key: 'images', label: 'Images', default: 10, step: 1 },
+      { key: 'resolution', label: 'Resolution', default: '1K',
+        options: ['1K', '2K', '4K'].map(v => ({ value: v, label: v })) },
+    ],
+    cost: (m, w, sources) => {
+      const p = perImagePrice(m, w.resolution, sources.imagePricing);
+      return p.reason ? { kind: 'reason', reason: REASONS[p.reason] } : { kind: 'usd', usd: w.images * p.usd };
+    },
+  };
+  return { workload, includes, rowOf: m => coreFields(m), sortKeys: {} };
+}
 
 /**
  * A Model's price for one output image at `resolution` ('1K', '2K' or '4K').
@@ -33,7 +51,7 @@ export const IMAGE_INPUTS = [
  *   (per megapixel, or variants that aren't resolutions, such as quality
  *   tiers, or that can't be placed).
  */
-export function perImagePrice(model, resolution, imagePricing) {
+function perImagePrice(model, resolution, imagePricing) {
   if (!imagePricing?.models?.data) return { reason: 'notLoaded' };
   if (!imagePricing.models.data.some(m => m.id === model.id)) {
     return { reason: Number(model.pricing?.prompt) < 0 ? 'variable' : 'unpriced' };

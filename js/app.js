@@ -1,9 +1,12 @@
 // The shell: fetching, tabs, filters and rendering around the pure core
 // (core.js). The shared table lives in table.js.
 import { buildPages, WORKLOADS, workloadValues } from './core.js';
-import { createImagePricing } from './image-pricing.js';
 import { loadSettings, saveSettings, clearSaved, loadTheme, saveTheme } from './store.js';
-import { CORE_COLUMNS, COST_COLUMN, BADGES, tableHtml, attachTable, fmtUsd, esc, extraPriceLines } from './table.js';
+import { videoPage } from './video-page.js';
+import { imagePage } from './image-page.js';
+import { CORE_COLUMNS, COST_COLUMN, BADGES, tableHtml, attachTable, fmtUsd, esc, extraPriceLines, costCell } from './table.js';
+import { DECISIONS_VIEW } from './decisions-view.js';
+import { AUDIO_COLUMNS } from './audio-view.js';
 
 const CATALOGUE_URL = 'https://openrouter.ai/api/v1/models?output_modalities=all';
 
@@ -27,11 +30,11 @@ const CODE_COLUMNS = [
 const PAGES = {
   new: { id: 'whatsNew', label: "What's new" },
   code: { id: 'code', label: 'Code', columns: CODE_COLUMNS, defaultSort: { key: 'codingIndex', dir: 'desc' }, controls: ['reasoningOnlyLabel'] },
-  image: { id: 'image', label: 'Image' },
-  audio: { id: 'audio', label: 'Audio' },
-  video: { id: 'video', label: 'Video' },
-  transcription: { id: 'transcription', label: 'Transcription' },
-  decisions: { id: 'decisions', label: 'Decisions' },
+  image: imagePage(() => render()),
+  audio: { id: 'audio', label: 'Audio', columns: AUDIO_COLUMNS },
+  video: videoPage(() => render()),
+  transcription: { id: 'transcription', label: 'Transcription', columns: [{ key: 'perMinute', label: 'Per minute', title: 'USD per minute of audio; "—" when it can\'t be computed (hover for why)', cell: r => r.perMinute.kind === 'usd' ? `<td class="num">${fmtUsd(r.perMinute.usd)}</td>` : costCell(r.perMinute) }] },
+  decisions: { id: 'decisions', label: 'Decisions', ...DECISIONS_VIEW },
   all: { id: 'allModels', label: 'All models', columns: ALL_MODELS_COLUMNS },
 };
 const DEFAULT_HASH = 'new';
@@ -56,9 +59,6 @@ const DEFAULT_SETTINGS = { author: '', search: '', hideFree: false, reasoningOnl
 // Browser storage, or null where it's missing or blocked (even reading
 // `localStorage` can throw then); store.js guards every access besides.
 const storage = (() => { try { return window.localStorage; } catch { return null; } })();
-
-// The Image page's per-image prices, loaded the first time its tab opens.
-const imagePricing = createImagePricing(storage, () => render());
 
 const state = {
   catalogue: null, loadedAt: null, loading: false,
@@ -109,7 +109,7 @@ function render() {
   }
   renderStatus();
   renderWorkload(PAGES[hash].id);
-  imagePricing.show(hash === 'image');
+  PAGES[hash].onShow?.();   // a page's extra pricing data, fetched on first view
   for (const el of document.querySelectorAll('[data-page-control]')) {
     el.hidden = !(PAGES[hash].controls || []).includes(el.id);
   }
@@ -118,7 +118,8 @@ function render() {
     page.innerHTML = state.loading ? '<p class="placeholder">Loading the catalogue…</p>' : '';
     return;
   }
-  const pages = buildPages({ catalogue: state.catalogue, imagePricing: imagePricing.sources() }, state.settings, Date.now());
+  const sources = Object.assign({ catalogue: state.catalogue }, ...Object.values(PAGES).map(p => p.sources?.()));
+  const pages = buildPages(sources, state.settings, Date.now());
   renderAuthors(pages.authors);
   const rows = pages[PAGES[hash].id];
   if (!rows) {
@@ -130,7 +131,7 @@ function render() {
   state.rows = rows;
   state.columns = [...CORE_COLUMNS, ...(PAGES[hash].columns || []),
     ...(WORKLOADS[PAGES[hash].id] ? [COST_COLUMN] : [])];
-  page.innerHTML = tableHtml(rows, state.columns, currentSort());
+  page.innerHTML = (PAGES[hash].intro || '') + (PAGES[hash].notice?.() || '') + tableHtml(rows, state.columns, currentSort());
 }
 
 // The sort the table is showing: the viewer's, if this page has that column,

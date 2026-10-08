@@ -18,6 +18,11 @@ HTML, CSS and ES modules with no build step and no dependencies.
   rows for each page. A page with a Workload declares its inputs and a pure cost
   rule there (see the comment above the page definitions); the shell then shows
   the inputs and a sortable cost column with no further changes.
+- `js/audio.js`, `js/audio-view.js`: the Audio page's definition and cost rule
+  (core side) and its price column (shell side).
+- `js/image.js`, `js/image-page.js`: the Image page's definition and
+  closest-resolution cost rule (core side), and its lazy, throttled fetch of
+  OpenRouter's image pricing with a several-hour browser cache (shell side).
 - `test/`: tests for `buildPages`, run against saved real API responses in
   `test/fixtures/`.
 - `tools/trim-fixture.mjs`: trims a raw API response to chosen models and keeps each
@@ -41,3 +46,5 @@ Then open <http://localhost:8000/>. ES modules won't load from `file://`.
     node tools/trim-fixture.mjs raw.json test/fixtures/catalogue.json <model ids…>
 
 `test/fixtures/catalogue.json` was captured on 2026-10-08.
+`test/fixtures/transcription.json` (four more transcription Models) was captured on 2026-10-08.
+`test/fixtures/decisions.json` (every Decisions Model, plus one text Model) was captured on 2026-10-08.

@@ -1,10 +1,12 @@
-// The Image page's extra pricing data, part of the shell. Fetched only once
-// the Image tab is first opened: OpenRouter's image-models listing, then each
+// The Image page's shell: its entry in app.js's page table, and its extra
+// pricing data, fetched only once the tab is first opened: OpenRouter's image-models listing, then each
 // listed Model's endpoints resource (its per-image prices), a few at a time.
 // Every response is kept in browser storage for several hours; a failed
 // request is never stored, so it's retried on the next visit. The core
 // (js/image.js) prices from what `sources()` returns, so rows fill in as
 // responses arrive, and the other tabs never wait on any of this.
+
+import { esc } from './table.js';
 
 const API_ORIGIN = 'https://openrouter.ai';
 const LISTING_URL = API_ORIGIN + '/api/v1/images/models';
@@ -14,18 +16,23 @@ const CONCURRENCY = 4;
 const REDRAW_MS = 250;                      // batch redraws as responses land
 
 /**
- * @param {Storage|null} storage localStorage, or null where it's missing or blocked
- * @param {() => void} onChange called (batched) whenever more data or a
- *   failure arrives, to re-render
+ * The Image page's entry in the shell's page table (see videoPage for the
+ * same hooks).
+ * @param {() => void} rerender called (batched) whenever more data or a
+ *   failure arrives
+ * @returns {{id, label, onShow: () => void, notice: () => string,
+ *   sources: () => {imagePricing?: {models, endpoints}}}}
  */
-export function createImagePricing(storage, onChange) {
+export function imagePage(rerender) {
+  // Browser storage, or null where it's missing or blocked; every access is guarded.
+  const storage = (() => { try { return window.localStorage; } catch { return null; } })();
   // cache: {models: {at, body}, endpoints: {[id]: {at, body}}}, fresh entries only.
   const cache = loadCache(storage, Date.now());
   const s = { started: false, models: null, endpoints: {}, total: 0, failed: 0, error: null, pending: 0 };
   let redraw = null;
   const changed = () => {
     clearTimeout(redraw);
-    redraw = setTimeout(onChange, REDRAW_MS);
+    redraw = setTimeout(rerender, REDRAW_MS);
   };
   const remember = (put) => {
     put(cache, { at: Date.now() });
@@ -71,43 +78,35 @@ export function createImagePricing(storage, onChange) {
     await Promise.all(Array.from({ length: CONCURRENCY }, worker));
   }
 
-  let note = null;
-  const api = {
-    /**
-     * Call on every render with whether the Image tab is showing: the first
-     * time it is, loading starts (once per visit); while it is, a progress or
-     * failure note shows above the table.
-     */
-    show(onImageTab) {
-      if (onImageTab && !s.started) {
-        s.started = true;
-        run();
-      }
-      const text = onImageTab ? api.status() : '';
-      if (!note && !text) return;
-      if (!note) {
-        note = document.createElement('p');
-        note.className = 'panel note';
-        note.setAttribute('role', 'status');
-        document.getElementById('page').before(note);
-      }
-      note.textContent = text;
-      note.hidden = !text;
-    },
-    /** The core's `sources.imagePricing`, or undefined before the listing arrives. */
-    sources: () => (s.models ? { models: s.models, endpoints: s.endpoints } : undefined),
-    /** A one-line progress or failure note, or '' when everything is in. */
-    status() {
-      if (s.error) return `Couldn't load image prices from OpenRouter: ${s.error}. They'll be retried on your next visit.`;
-      if (!s.started) return '';
-      if (!s.models) return 'Loading image prices…';
-      if (s.pending) return `Loading image prices: ${s.total - s.pending - s.failed} of ${s.total}…`;
-      if (s.failed) return `Couldn't load image prices for ${s.failed} of ${s.total} Models; ` +
-        'they show "pricing data not loaded" and will be retried on your next visit.';
-      return '';
-    },
+  const status = () => {
+    if (s.error) return `Couldn't load image prices from OpenRouter: ${s.error}. They'll be retried on your next visit.`;
+    if (!s.models) return 'Loading image prices…';
+    if (s.pending) return `Loading image prices: ${s.total - s.pending - s.failed} of ${s.total}…`;
+    if (s.failed) return `Couldn't load image prices for ${s.failed} of ${s.total} Models; ` +
+      'they show "pricing data not loaded" and will be retried on your next visit.';
+    return '';
   };
-  return api;
+
+  return {
+    id: 'image',
+    label: 'Image',
+    // Start loading the first time the tab is shown (once per visit).
+    onShow: () => {
+      if (s.started) return;
+      s.started = true;
+      run();
+    },
+    // A progress or failure note above the table.
+    notice: () => {
+      const text = s.started ? status() : '';
+      if (!text) return '';
+      return s.error || (!s.pending && s.failed)
+        ? `<div class="error"><p>${esc(text)}</p></div>`
+        : `<p class="placeholder" role="status">${esc(text)}</p>`;
+    },
+    // The core's `sources.imagePricing`, once the listing has arrived.
+    sources: () => (s.models ? { imagePricing: { models: s.models, endpoints: s.endpoints } } : {}),
+  };
 }
 
 async function fetchJson(url, valid) {
