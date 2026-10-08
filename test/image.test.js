@@ -135,6 +135,26 @@ test('Image can be sorted by per-image price, cheapest first, reasons last', () 
   assert.equal(rows.at(-1).perImage.kind, 'reason');
 });
 
+test('while prices stream in, a held row order keeps rows in place as their values change', () => {
+  const byCost = { sort: { key: 'cost', dir: 'asc' } };
+  const partly = { catalogue, imagePricing: { models: imageModels,
+    endpoints: { 'sourceful/riverflow-v2.5-pro': endpoints['sourceful/riverflow-v2.5-pro'] } } };
+  const before = image(partly, byCost).map(r => r.id);
+  assert.equal(before[0], 'sourceful/riverflow-v2.5-pro');   // the only one costed so far
+  // Everything arrives. Unheld, the order changes ...
+  assert.notDeepEqual(image(loaded, byCost).map(r => r.id), before);
+  // ... held, it doesn't, though every value is up to date.
+  const held = image(loaded, { ...byCost, holdOrder: { image: before } });
+  assert.deepEqual(held.map(r => r.id), before);
+  assert.deepEqual(held.find(r => r.id === 'black-forest-labs/flux-3-image').cost, usd(0.48));
+  // A row the held order doesn't know (e.g. a new filter match) goes after, in sort order.
+  const short = image(loaded, { ...byCost, holdOrder: { image: before.slice(1) } }).map(r => r.id);
+  assert.deepEqual(short, [...before.slice(1), before[0]]);
+  // Other pages ignore another page's held order.
+  assert.deepEqual(buildPages(loaded, { holdOrder: { image: before } }, NOW).allModels.map(r => r.id),
+    buildPages(loaded, {}, NOW).allModels.map(r => r.id));
+});
+
 test('a remembered Image Workload is used, and an invalid resolution falls back to 1K', () => {
   const flux = 'black-forest-labs/flux-3-image';
   assert.deepEqual(costOf(flux, workload({ images: '4', resolution: '4K' })), usd(2.428));   // 4 × $0.607

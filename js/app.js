@@ -30,7 +30,7 @@ const CODE_COLUMNS = [
 const PAGES = {
   new: { id: 'whatsNew', label: "What's new" },
   code: { id: 'code', label: 'Code', columns: CODE_COLUMNS, defaultSort: { key: 'codingIndex', dir: 'desc' }, controls: ['reasoningOnlyLabel'] },
-  image: imagePage(() => render()),
+  image: imagePage(opts => render(opts)),
   audio: { id: 'audio', label: 'Audio', columns: AUDIO_COLUMNS },
   video: videoPage(() => render()),
   transcription: { id: 'transcription', label: 'Transcription', columns: [{ key: 'perMinute', label: 'Per minute', title: 'USD per minute of audio; "—" when it can\'t be computed (hover for why)', cell: r => r.perMinute.kind === 'usd' ? `<td class="num">${fmtUsd(r.perMinute.usd)}</td>` : costCell(r.perMinute) }] },
@@ -65,6 +65,7 @@ const state = {
   settings: loadSettings(storage, DEFAULT_SETTINGS),
   theme: loadTheme(storage),   // 'light', 'dark', or null to follow the system
   rows: [], columns: [],   // what the table is showing now
+  shown: null,             // {hash, ids}: the page and row order last shown
 };
 
 const $ = id => document.getElementById(id);
@@ -101,7 +102,10 @@ function currentHash() {
   return PAGES[h] ? h : DEFAULT_HASH;
 }
 
-function render() {
+// Rendering re-sorts the table, except with `keepOrder` (data arriving
+// without the viewer doing anything): then the rows on screen keep their
+// places while their values update (user story 48).
+function render({ keepOrder = false } = {}) {
   const hash = currentHash();
   for (const a of document.querySelectorAll('#tabs a')) {
     if (a.getAttribute('href') === '#' + hash) a.setAttribute('aria-current', 'page');
@@ -119,7 +123,8 @@ function render() {
     return;
   }
   const sources = Object.assign({ catalogue: state.catalogue }, ...Object.values(PAGES).map(p => p.sources?.()));
-  const pages = buildPages(sources, state.settings, Date.now());
+  const held = keepOrder && state.shown?.hash === hash ? { [PAGES[hash].id]: state.shown.ids } : undefined;
+  const pages = buildPages(sources, { ...state.settings, holdOrder: held }, Date.now());
   renderAuthors(pages.authors);
   const rows = pages[PAGES[hash].id];
   if (!rows) {
@@ -129,6 +134,7 @@ function render() {
     return;
   }
   state.rows = rows;
+  state.shown = { hash, ids: rows.map(r => r.id) };
   state.columns = [...CORE_COLUMNS, ...(PAGES[hash].columns || []),
     ...(WORKLOADS[PAGES[hash].id] ? [COST_COLUMN] : [])];
   page.innerHTML = (PAGES[hash].intro || '') + (PAGES[hash].notice?.() || '') + tableHtml(rows, state.columns, currentSort());

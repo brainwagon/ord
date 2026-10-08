@@ -27,8 +27,9 @@ const REDRAW_MS = 250;                      // batch redraws as responses land
 /**
  * The Image page's entry in the shell's page table (see videoPage for the
  * same hooks).
- * @param {() => void} rerender called (batched) whenever more data or a
- *   failure arrives
+ * @param {(opts?: {keepOrder?: boolean}) => void} rerender called (batched)
+ *   whenever more data or a failure arrives; `keepOrder` while more is on
+ *   its way
  * @returns {{id, label, onShow: () => void, notice: () => string,
  *   sources: () => {imagePricing?: {models, endpoints}}}}
  */
@@ -39,9 +40,11 @@ export function imagePage(rerender) {
   const cache = loadCache(storage, Date.now());
   const s = { started: false, models: null, endpoints: {}, total: 0, failed: 0, error: null, pending: 0 };
   let redraw = null;
+  // While prices stream in, cells update but the rows hold their order (the
+  // viewer may be reading); once the batch is done, the table re-sorts once.
   const changed = () => {
     clearTimeout(redraw);
-    redraw = setTimeout(rerender, REDRAW_MS);
+    redraw = setTimeout(() => rerender({ keepOrder: s.pending > 0 }), REDRAW_MS);
   };
   const remember = (put) => {
     put(cache, { at: Date.now() });
@@ -90,7 +93,7 @@ export function imagePage(rerender) {
   const status = () => {
     if (s.error) return `Couldn't load image prices from OpenRouter: ${s.error}. They'll be retried on your next visit.`;
     if (!s.models) return 'Loading image prices…';
-    if (s.pending) return `Loading image prices: ${s.total - s.pending - s.failed} of ${s.total}…`;
+    if (s.pending) return `loading prices ${s.total - s.pending}/${s.total}`;
     if (s.failed) return `Couldn't load image prices for ${s.failed} of ${s.total} Models; ` +
       'they show "pricing data not loaded" and will be retried on your next visit.';
     return '';

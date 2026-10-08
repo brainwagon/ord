@@ -60,6 +60,7 @@ import { parsePrice, roundUsd } from './pricing.js';
  *   (plus `videoModels` and `imagePricing` once the shell has loaded them)
  * @param {{hideFree?: boolean, author?: string, search?: string, reasoningOnly?: boolean,
  *   sort?: {key: string, dir: 'asc'|'desc'}, newWindowDays?: number,
+ *   holdOrder?: {[pageId: string]: string[]},
  *   workloads?: {[pageId: string]: {[inputKey: string]: any}}}} settings
  *   the viewer's settings. `newWindowDays` is the "new" window (default 30).
  *   `search` matches name or id, case-insensitively. Sort keys: name, author,
@@ -68,6 +69,10 @@ import { parsePrice, roundUsd } from './pricing.js';
  *   unknown key means the page's default order (newest first; Code: coding
  *   index, highest first). `reasoningOnly` narrows Code to reasoning Models.
  *   `workloads` holds each page's Workload values (see workloadValues).
+ *   `holdOrder` keeps a page's rows in a given order (Model ids, as last
+ *   shown), so the shell can update values without reshuffling the table
+ *   while data streams in (user story 48); rows it doesn't list follow, in
+ *   sort order. It's never remembered.
  * @param {number} now current time, ms since the epoch
  * @returns {{authors: string[], allModels: object[], whatsNew: object[], code: object[]}}
  */
@@ -77,14 +82,14 @@ export function buildPages(sources, settings, now) {
   const isNew = isNewModel(settings, now);
   return {
     authors,
-    allModels: buildPage(models, settings, ALL_MODELS, isNew),
-    whatsNew: buildPage(models.filter(isNew), settings, WHATS_NEW, isNew),
-    code: buildPage(models, settings, CODE, isNew, sources),
-    image: buildPage(models, settings, IMAGE, isNew, sources),
-    transcription: buildPage(models, settings, TRANSCRIPTION, isNew, sources),
-    decisions: buildPage(models, settings, DECISIONS, isNew, sources),
-    audio: buildPage(models, settings, AUDIO, isNew, sources),
-    video: buildPage(models, settings, VIDEO, isNew, sources),
+    allModels: buildPage('allModels', models, settings, ALL_MODELS, isNew, sources),
+    whatsNew: buildPage('whatsNew', models.filter(isNew), settings, WHATS_NEW, isNew, sources),
+    code: buildPage('code', models, settings, CODE, isNew, sources),
+    image: buildPage('image', models, settings, IMAGE, isNew, sources),
+    transcription: buildPage('transcription', models, settings, TRANSCRIPTION, isNew, sources),
+    decisions: buildPage('decisions', models, settings, DECISIONS, isNew, sources),
+    audio: buildPage('audio', models, settings, AUDIO, isNew, sources),
+    video: buildPage('video', models, settings, VIDEO, isNew, sources),
   };
 }
 
@@ -250,7 +255,7 @@ const CORE_SORT_KEYS = {
 // The pipeline every page shares: the page's rows, each badged "new" when it's
 // a New model (`isNew`, from isNewModel), through the viewer's filters, in the
 // viewer's sort order (newest first by default).
-function buildPage(models, settings, page, isNew, sources) {
+function buildPage(pageId, models, settings, page, isNew, sources) {
   const author = settings.author || '';
   const search = (settings.search || '').trim().toLowerCase();
   const values = page.workload ? workloadValues(page.workload.id, settings) : {};
@@ -275,11 +280,22 @@ function buildPage(models, settings, page, isNew, sources) {
   const sign = dir === 'desc' ? -1 : 1;
   // Ties: `:free` variants first among equal values (so first among $0
   // prices), then newest first, then by id.
-  return rows.sort((a, b) =>
+  rows.sort((a, b) =>
     compareValues(valueOf(a), valueOf(b), sign) ||
     (isKnown(valueOf(a)) && b.badges.free - a.badges.free) ||
     b.created - a.created ||
     a.id.localeCompare(b.id));
+  return holdOrder(rows, settings.holdOrder?.[pageId]);
+}
+
+// Rows in a held order (ids, as last shown), so values can update without the
+// table reshuffling; rows it doesn't list follow, in sort order. (The sort is
+// stable, so no held order means the rows as they are.)
+function holdOrder(rows, ids) {
+  if (!Array.isArray(ids)) return rows;
+  const at = new Map(ids.map((id, i) => [id, i]));
+  const place = r => at.get(r.id) ?? Infinity;
+  return rows.sort((a, b) => place(a) - place(b) || 0);
 }
 
 // Every reason a cost can be unavailable. A cost rule returns
