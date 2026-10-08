@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenRouter Dashboard</title>
+<meta name="description" content="Discover the models available through OpenRouter, including newly added ones, and compare what they would cost.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%230b6bcb'/%3E%3Cpath d='M4 5h8M4 8h8M4 11h5' stroke='white' stroke-width='1.5'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/style.css">
+<script type="module" src="js/app.js"></script>
+</head>
+<body>
+
+<header>
+  <h1>OpenRouter Dashboard</h1>
+  <span class="sub">Every model in OpenRouter's live catalogue, by what it can do.</span>
+</header>
+
+<nav id="tabs" aria-label="Pages">
+  <a href="#new" data-page="whatsNew">What's new</a>
+  <a href="#code" data-page="code">Code</a>
+  <a href="#image" data-page="image">Image</a>
+  <a href="#audio" data-page="audio">Audio</a>
+  <a href="#video" data-page="video">Video</a>
+  <a href="#transcription" data-page="transcription">Transcription</a>
+  <a href="#decisions" data-page="decisions">Decisions</a>
+  <a href="#all" data-page="allModels">All models</a>
+</nav>
+
+<div class="panel controls">
+  <button id="refresh" type="button">Refresh</button>
+  <span class="status" id="status" role="status">loading…</span>
+</div>
+
+<div class="panel error" id="error" hidden>
+  <p id="errorText"></p>
+  <button id="retry" type="button">Retry</button>
+</div>
+
+<main id="page" class="panel tablewrap"></main>
+
+<footer>
+  Data: <a href="https://openrouter.ai/docs/api-reference/list-available-models">OpenRouter models API</a>,
+  loaded live in your browser. Prices are USD.
+</footer>
+
+</body>
+</html>
