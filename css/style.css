@@ -89,6 +89,9 @@ td.model-cell { min-width: 14em; }
 }
 .badge.warn { color: var(--warn); border-color: var(--warn); }
 .badge.free { color: var(--accent); border-color: var(--accent); }
+.badge.new { color: var(--bg); background: var(--accent); border-color: var(--accent); }
+a.badge.page { color: var(--fg); text-decoration: none; }
+a.badge.page:hover { border-color: var(--accent); color: var(--accent); }
 tr.model { cursor: pointer; }
 tr.model.open { background: var(--hover); }
 tr.desc td {
@@ -104,7 +107,8 @@ th[aria-sort] { color: var(--fg); }
 .filters label { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--dim); }
 .filters .grow { flex: 1 1 12em; }
 .filters input[type="search"] { flex: 1; min-width: 0; }
-select, input[type="search"] {
+#newWindow { width: 4.5em; }
+select, input[type="search"], input[type="number"] {
   font: inherit; font-size: 13px; color: var(--fg); background: var(--panel);
   border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px;
 }
