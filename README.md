@@ -20,6 +20,9 @@ HTML, CSS and ES modules with no build step and no dependencies.
   the inputs and a sortable cost column with no further changes.
 - `js/audio.js`, `js/audio-view.js`: the Audio page's definition and cost rule
   (core side) and its price column (shell side).
+- `js/image.js`, `js/image-page.js`: the Image page's definition and
+  closest-resolution cost rule (core side), and its lazy, throttled fetch of
+  OpenRouter's image pricing with a several-hour browser cache (shell side).
 - `test/`: tests for `buildPages`, run against saved real API responses in
   `test/fixtures/`.
 - `tools/trim-fixture.mjs`: trims a raw API response to chosen models and keeps each

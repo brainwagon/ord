@@ -4,13 +4,13 @@ import { videoRates } from './video-pricing.js';
 import { transcriptionPage } from './transcription.js';
 import { decisionsPage } from './decisions.js';
 import { audioPage } from './audio.js';
+import { imagePage } from './image.js';
 
 /**
  * The core's single public entry point.
  *
- * Returns ordered rows per page, keyed by page id. Today `allModels`,
- * `whatsNew` and `code`; later pages add keys alongside them (`image`, `audio`,
- * `video`, `transcription`, `decisions`). A page with no key isn't built yet.
+ * Returns ordered rows per page, keyed by page id: `allModels`, `whatsNew`,
+ * `code`, `image`, `transcription`, `decisions`, `audio` and `video`.
  * What's new lists every New model in the catalogue (any kind, aliases
  * excluded); its rows add `badges.pages`, the ids of every Capability page
  * the Model appears on (see CAPABILITY_PAGES), in tab order.
@@ -56,7 +56,7 @@ import { audioPage } from './audio.js';
  * (among equal known values), then newest first.
  *
  * @param {{catalogue: {data: object[]}}} sources raw API responses, as fetched
- *   (later: `videoModels`, `imagePricing` when loaded)
+ *   (plus `videoModels` and `imagePricing` once the shell has loaded them)
  * @param {{hideFree?: boolean, author?: string, search?: string, reasoningOnly?: boolean,
  *   sort?: {key: string, dir: 'asc'|'desc'}, newWindowDays?: number,
  *   workloads?: {[pageId: string]: {[inputKey: string]: any}}}} settings
@@ -79,6 +79,7 @@ export function buildPages(sources, settings, now) {
     allModels: buildPage(models, settings, ALL_MODELS, isNew),
     whatsNew: buildPage(models.filter(isNew), settings, WHATS_NEW, isNew),
     code: buildPage(models, settings, CODE, isNew, sources),
+    image: buildPage(models, settings, IMAGE, isNew, sources),
     transcription: buildPage(models, settings, TRANSCRIPTION, isNew, sources),
     decisions: buildPage(models, settings, DECISIONS, isNew, sources),
     audio: buildPage(models, settings, AUDIO, isNew, sources),
@@ -299,6 +300,9 @@ const DECISIONS = decisionsPage({ coreFields, tokenCost, includes: CAPABILITY_PA
 // Audio: characters to speak, priced per character (js/audio.js).
 const AUDIO = audioPage({ REASONS, coreFields, includes: CAPABILITY_PAGES.find(p => p.id === 'audio').includes });
 
+// Image: a number of images at a resolution, priced per image (js/image.js).
+const IMAGE = imagePage({ REASONS, coreFields, includes: CAPABILITY_PAGES.find(p => p.id === 'image').includes });
+
 /**
  * Each page's Workload inputs, keyed by page id, for the shell to render. A
  * WorkloadInput is {key, label, default, ...}: a number (`step`, `min`
@@ -307,7 +311,7 @@ const AUDIO = audioPage({ REASONS, coreFields, includes: CAPABILITY_PAGES.find(p
  * `settings.workloads[pageId][key]`; missing or invalid ones mean the default.
  */
 export const WORKLOADS = Object.freeze(Object.fromEntries(
-  [CODE_WORKLOAD, TRANSCRIPTION.workload, DECISIONS.workload, AUDIO.workload, VIDEO_WORKLOAD].map(w => [w.id, w.inputs])));
+  [CODE_WORKLOAD, IMAGE.workload, TRANSCRIPTION.workload, DECISIONS.workload, AUDIO.workload, VIDEO_WORKLOAD].map(w => [w.id, w.inputs])));
 
 /** A page's Workload values: the viewer's, with defaults for anything missing or invalid. */
 export function workloadValues(pageId, settings) {
