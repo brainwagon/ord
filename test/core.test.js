@@ -444,7 +444,7 @@ test('every Workload input is declared with a key, label and default', () => {
     for (const i of inputs) assert.ok(i.key && i.label && i.default !== undefined, JSON.stringify(i));
   }
   assert.deepEqual(Object.values(REASONS).sort(),
-    ['per-token pricing', 'pricing data not loaded', 'unit unclear', 'unpriced', 'variable']);
+    ['per-token pricing', 'priced by resolution', 'pricing data not loaded', 'unit unclear', 'unpriced', 'variable']);
 });
 
 test('pages without a Workload carry no cost', () => {
