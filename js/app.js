@@ -1,7 +1,7 @@
 // The shell: fetching, tabs, filters and rendering around the pure core
 // (core.js). The shared table lives in table.js.
 import { buildPages } from './core.js';
-import { CORE_COLUMNS, tableHtml, attachTable, fmtUsd, esc, extraPriceLines } from './table.js';
+import { CORE_COLUMNS, BADGES, tableHtml, attachTable, fmtUsd, esc, extraPriceLines } from './table.js';
 
 const CATALOGUE_URL = 'https://openrouter.ai/api/v1/models?output_modalities=all';
 
@@ -32,12 +32,21 @@ const PAGES = {
   all: { id: 'allModels', label: 'All models', columns: ALL_MODELS_COLUMNS },
 };
 const DEFAULT_HASH = 'new';
+const DEFAULT_NEW_WINDOW_DAYS = 30;
+
+// What's new badges each Model with the Capability pages it appears on (page
+// ids from the core), each a link to that page's tab.
+const HASH_OF_PAGE = Object.fromEntries(Object.entries(PAGES).map(([hash, p]) => [p.id, hash]));
+BADGES.pages = ids => ids.map(id =>
+  `<a class="badge page" href="#${HASH_OF_PAGE[id]}" title="appears on the ${esc(PAGES[HASH_OF_PAGE[id]].label)} page">` +
+  `${esc(PAGES[HASH_OF_PAGE[id]].label)}</a>`).join('');
 
 const state = {
   catalogue: null, loadedAt: null, loading: false,
   // The core's settings; filters and sort carry across tabs.
   // A null sort (or a key the page lacks) means the page's own default order.
-  settings: { author: '', search: '', hideFree: false, reasoningOnly: false, sort: null },
+  settings: { author: '', search: '', hideFree: false, reasoningOnly: false,
+    newWindowDays: DEFAULT_NEW_WINDOW_DAYS, sort: null },
   rows: [], columns: [],   // what the table is showing now
 };
 
@@ -153,6 +162,10 @@ attachTable($('page'), {
 });
 $('author').addEventListener('change', e => setSetting({ author: e.target.value }));
 $('search').addEventListener('input', e => setSetting({ search: e.target.value }));
+$('newWindow').addEventListener('input', e => {
+  const days = Math.floor(Number(e.target.value));
+  if (days >= 1) setSetting({ newWindowDays: days });
+});
 $('hideFree').addEventListener('change', e => setSetting({ hideFree: e.target.checked }));
 $('reasoningOnly').addEventListener('change', e => setSetting({ reasoningOnly: e.target.checked }));
 $('refresh').addEventListener('click', loadCatalogue);

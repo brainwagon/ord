@@ -4,17 +4,21 @@
 /**
  * The core's single public entry point.
  *
- * Returns ordered rows per page, keyed by page id. Today `allModels` and
- * `code`; later pages add keys alongside them (`whatsNew`, `image`, `audio`,
+ * Returns ordered rows per page, keyed by page id. Today `allModels`,
+ * `whatsNew` and `code`; later pages add keys alongside them (`image`, `audio`,
  * `video`, `transcription`, `decisions`). A page with no key isn't built yet.
+ * What's new lists every New model in the catalogue (any kind, aliases
+ * excluded); its rows add `badges.pages`, the ids of every Capability page
+ * the Model appears on (see CAPABILITY_PAGES), in tab order.
  *
  * Also returns `authors`: every Author in the catalogue, sorted, whatever the
  * filters (for the Author filter's choices).
  *
  * Every row has the core fields: id, name, author, created (ms epoch),
  * contextLength (null when unknown), description, url, and
- * `badges: {expires: 'YYYY-MM-DD' | null, free: boolean}` (free = a `:free`
- * variant). Pages add their own fields and badges; All models adds
+ * `badges: {expires: 'YYYY-MM-DD' | null, free: boolean, new: boolean}`
+ * (free = a `:free` variant; new = a New model, created no earlier than
+ * `newWindowDays` before `now`). Pages add their own fields and badges; All models adds
  * `prices: {input, output}`, each a Price:
  *   {kind: 'usd', usd}   USD per 1M tokens ($0 only for a free offering)
  *   {kind: 'variable'}   the API's -1 (routers)
@@ -36,24 +40,74 @@
  * @param {{catalogue: {data: object[]}}} sources raw API responses, as fetched
  *   (later: `videoModels`, `imagePricing` when loaded)
  * @param {{hideFree?: boolean, author?: string, search?: string, reasoningOnly?: boolean,
- *   sort?: {key: string, dir: 'asc'|'desc'}}} settings the viewer's settings.
+ *   sort?: {key: string, dir: 'asc'|'desc'}, newWindowDays?: number}} settings
+ *   the viewer's settings. `newWindowDays` is the "new" window (default 30).
  *   `search` matches name or id, case-insensitively. Sort keys: name, author,
  *   created, contextLength, plus each page's own (All models: input, output;
  *   Code: codingIndex, input, output); an unknown key means the page's
  *   default order (newest first; Code: coding index, highest first).
  *   `reasoningOnly` narrows Code to reasoning Models.
- *   (Later: Workloads, "new" window, ...)
+ *   (Later: Workloads, ...)
  * @param {number} now current time, ms since the epoch
- * @returns {{authors: string[], allModels: object[], code: object[]}}
+ * @returns {{authors: string[], allModels: object[], whatsNew: object[], code: object[]}}
  */
 export function buildPages(sources, settings, now) {
   const models = sources.catalogue.data;
   const authors = [...new Set(models.map(m => authorOf(m.id)))].sort();
+  const isNew = isNewModel(settings, now);
   return {
     authors,
-    allModels: buildPage(models, settings, ALL_MODELS),
-    code: buildPage(models, settings, CODE),
+    allModels: buildPage(models, settings, ALL_MODELS, isNew),
+    whatsNew: buildPage(models.filter(isNew), settings, WHATS_NEW, isNew),
+    code: buildPage(models, settings, CODE, isNew),
   };
+}
+
+const DAY_MS = 86_400_000;
+const DEFAULT_NEW_WINDOW_DAYS = 30;
+
+// A New model: `created` within the viewer's "new" window before `now`
+// (inclusive at the window's far edge; anything created after `now` counts).
+function isNewModel(settings, now) {
+  const days = settings.newWindowDays > 0 ? settings.newWindowDays : DEFAULT_NEW_WINDOW_DAYS;
+  const since = now - days * DAY_MS;
+  return m => m.created * 1000 >= since;
+}
+
+// What's new: every New model in the catalogue, whatever its kind.
+const WHATS_NEW = {
+  includeAliases: false,
+  rowOf: whatsNewRow,
+  sortKeys: {},
+};
+
+function whatsNewRow(m) {
+  const row = coreFields(m);
+  row.badges.pages = capabilityPagesOf(m);
+  return row;
+}
+
+// Page membership: the single registry of Capability pages, in tab order,
+// each with the predicate deciding (from `architecture.output_modalities`)
+// whether a Model appears on it. Capability pages filter their Models with
+// these, and What's new badges each Model with the ids of every page here it
+// qualifies for, so a page joins both just by being listed. Aliases are
+// dropped by the shared pipeline, not here.
+const outputs = m => m.architecture?.output_modalities || [];
+const outputsAny = (...kinds) => m => outputs(m).some(o => kinds.includes(o));
+const CAPABILITY_PAGES = [
+  { id: 'code', includes: m => outputs(m).includes('text') &&
+      !outputs(m).some(o => ['decisions', 'embeddings', 'rerank'].includes(o)) },
+  { id: 'image', includes: outputsAny('image') },
+  { id: 'audio', includes: outputsAny('speech', 'audio') },
+  { id: 'video', includes: outputsAny('video') },
+  { id: 'transcription', includes: outputsAny('transcription') },
+  { id: 'decisions', includes: outputsAny('decisions') },
+];
+
+// The ids of every Capability page this Model appears on, in tab order.
+function capabilityPagesOf(m) {
+  return CAPABILITY_PAGES.filter(p => p.includes(m)).map(p => p.id);
 }
 
 // A page definition: how to turn a Model into the page's row, the extra
@@ -67,13 +121,10 @@ const ALL_MODELS = {
   sortKeys: { input: r => r.prices.input, output: r => r.prices.output },
 };
 
-// Code: every Model that outputs text, except those whose job is something
-// else (decisions, embeddings, rerank).
+// Code: membership from the registry (text output, but not decisions,
+// embeddings or rerank).
 const CODE = {
-  includes: m => {
-    const outputs = m.architecture.output_modalities;
-    return outputs.includes('text') && !outputs.some(o => NOT_CODE_OUTPUTS.has(o));
-  },
+  includes: CAPABILITY_PAGES.find(p => p.id === 'code').includes,
   rowOf: codeRow,
   keep: (r, settings) => !settings.reasoningOnly || r.badges.reasoning,
   sortKeys: {
@@ -83,7 +134,6 @@ const CODE = {
   },
   defaultSort: { key: 'codingIndex', dir: 'desc' },
 };
-const NOT_CODE_OUTPUTS = new Set(['decisions', 'embeddings', 'rerank']);
 
 // The default order for a page that doesn't give its own `defaultSort`.
 const NEWEST_FIRST = { key: 'created', dir: 'desc' };
@@ -96,15 +146,20 @@ const CORE_SORT_KEYS = {
   contextLength: r => r.contextLength,
 };
 
-// The pipeline every page shares: the viewer's filters, then the page's rows
-// in the viewer's sort order (newest first by default).
-function buildPage(models, settings, page) {
+// The pipeline every page shares: the page's rows, each badged "new" when it's
+// a New model (`isNew`, from isNewModel), through the viewer's filters, in the
+// viewer's sort order (newest first by default).
+function buildPage(models, settings, page, isNew) {
   const author = settings.author || '';
   const search = (settings.search || '').trim().toLowerCase();
   const rows = models
     .filter(m => page.includeAliases || !m.alias_target)
     .filter(m => !page.includes || page.includes(m))
-    .map(page.rowOf)
+    .map(m => {
+      const row = page.rowOf(m);
+      row.badges.new = isNew(m);
+      return row;
+    })
     .filter(r => !page.keep || page.keep(r, settings))
     .filter(r => !(settings.hideFree && r.badges.free))
     .filter(r => !author || r.author === author)

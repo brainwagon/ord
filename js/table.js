@@ -20,6 +20,7 @@ export const CORE_COLUMNS = [
  * add theirs here (new, reasoning, tiered, …).
  */
 export const BADGES = {
+  new: v => v ? '<span class="badge new" title="added within the &quot;new&quot; window">new</span>' : '',
   free: v => v ? '<span class="badge free">free</span>' : '',
   expires: v => v ? `<span class="badge warn" title="OpenRouter has scheduled this model for removal">expires ${esc(v)}</span>` : '',
   reasoning: v => v ? '<span class="badge reasoning" title="supports reasoning">reasoning</span>' : '',
