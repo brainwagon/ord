@@ -32,6 +32,12 @@
   <span class="status" id="status" role="status">loading…</span>
 </div>
 
+<div class="panel controls filters">
+  <label>Author <select id="author"><option value="">All Authors</option></select></label>
+  <label class="grow">Search <input id="search" type="search" placeholder="name or id" autocomplete="off"></label>
+  <label><input id="hideFree" type="checkbox"> Hide :free</label>
+</div>
+
 <div class="panel error" id="error" hidden>
   <p id="errorText"></p>
   <button id="retry" type="button">Retry</button>

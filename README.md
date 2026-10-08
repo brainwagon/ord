@@ -5,7 +5,10 @@ HTML, CSS and ES modules with no build step and no dependencies.
 
 ## Layout
 
-- `index.html`, `css/`, `js/app.js`: the shell (fetching, tabs, rendering).
+- `index.html`, `css/`, `js/app.js`: the shell (fetching, tabs, filters, rendering).
+- `js/table.js`: the table every page shares (core columns, badges, sortable
+  headers, expandable descriptions, click-to-copy ids). A page passes its own
+  columns after `CORE_COLUMNS`; row order always comes from the core.
 - `js/core.js`: the pure core. It has no DOM or network access, and its single entry
   point is `buildPages(sources, settings, now)`, which turns raw API responses into
   rows for each page.

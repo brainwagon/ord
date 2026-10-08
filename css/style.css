@@ -71,7 +71,43 @@ tbody tr:hover { background: var(--hover); }
 td.num { font-family: var(--mono); font-size: 12px; }
 td.note { color: var(--dim); font-style: italic; font-family: inherit; }
 td:first-child { white-space: normal; }
-.mid { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
-.mname { display: block; color: var(--dim); font-size: 11px; }
+td.model-cell { min-width: 14em; }
+.mname { font-weight: 600; margin-right: 4px; }
+.idline { display: block; }
+.mid {
+  font-family: var(--mono); font-size: 12px; color: var(--accent);
+  background: none; border: 0; padding: 0; text-align: left;
+  overflow-wrap: anywhere; cursor: copy;
+}
+.mid:hover { text-decoration: underline; }
+.mid.copied::after { content: " copied"; color: var(--dim); font-family: system-ui, sans-serif; }
+.ext { margin-left: 6px; }
+.badge {
+  display: inline-block; font-size: 10px; line-height: 1.4; padding: 0 5px; margin: 0 3px 0 0;
+  border: 1px solid var(--line); border-radius: 8px; color: var(--dim); white-space: nowrap;
+  vertical-align: 1px;
+}
+.badge.warn { color: var(--warn); border-color: var(--warn); }
+.badge.free { color: var(--accent); border-color: var(--accent); }
+tr.model { cursor: pointer; }
+tr.model.open { background: var(--hover); }
+tr.desc td {
+  white-space: normal; text-align: left; color: var(--dim);
+  font-size: 13px; padding: 4px 10px 8px; background: var(--panel);
+}
+th button.sort {
+  background: none; border: 0; padding: 0; font: inherit; color: inherit;
+  text-transform: inherit; letter-spacing: inherit; cursor: pointer;
+}
+th button.sort:hover { color: var(--fg); }
+th[aria-sort] { color: var(--fg); }
+.filters label { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--dim); }
+.filters .grow { flex: 1 1 12em; }
+.filters input[type="search"] { flex: 1; min-width: 0; }
+select, input[type="search"] {
+  font: inherit; font-size: 13px; color: var(--fg); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px;
+}
+select { max-width: 14em; }
 .placeholder { color: var(--dim); padding: 12px 4px; margin: 0; }
 footer { color: var(--dim); font-size: 11px; padding: 0 2px 6px; }
