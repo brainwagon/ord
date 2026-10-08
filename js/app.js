@@ -1,6 +1,7 @@
 // The shell: fetching, tabs, filters and rendering around the pure core
 // (core.js). The shared table lives in table.js.
 import { buildPages, WORKLOADS, workloadValues } from './core.js';
+import { createImagePricing } from './image-pricing.js';
 import { loadSettings, saveSettings, clearSaved, loadTheme, saveTheme } from './store.js';
 import { CORE_COLUMNS, COST_COLUMN, BADGES, tableHtml, attachTable, fmtUsd, esc, extraPriceLines } from './table.js';
 
@@ -56,6 +57,9 @@ const DEFAULT_SETTINGS = { author: '', search: '', hideFree: false, reasoningOnl
 // `localStorage` can throw then); store.js guards every access besides.
 const storage = (() => { try { return window.localStorage; } catch { return null; } })();
 
+// The Image page's per-image prices, loaded the first time its tab opens.
+const imagePricing = createImagePricing(storage, () => render());
+
 const state = {
   catalogue: null, loadedAt: null, loading: false,
   settings: loadSettings(storage, DEFAULT_SETTINGS),
@@ -105,6 +109,7 @@ function render() {
   }
   renderStatus();
   renderWorkload(PAGES[hash].id);
+  imagePricing.show(hash === 'image');
   for (const el of document.querySelectorAll('[data-page-control]')) {
     el.hidden = !(PAGES[hash].controls || []).includes(el.id);
   }
@@ -113,7 +118,7 @@ function render() {
     page.innerHTML = state.loading ? '<p class="placeholder">Loading the catalogue…</p>' : '';
     return;
   }
-  const pages = buildPages({ catalogue: state.catalogue }, state.settings, Date.now());
+  const pages = buildPages({ catalogue: state.catalogue, imagePricing: imagePricing.sources() }, state.settings, Date.now());
   renderAuthors(pages.authors);
   const rows = pages[PAGES[hash].id];
   if (!rows) {

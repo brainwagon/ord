@@ -1,5 +1,6 @@
 // The dashboard's pure core: raw OpenRouter responses + viewer settings + the
 // current time in, the rows each page shows out. No DOM, no network.
+import { IMAGE_INPUTS, perImagePrice } from './image.js';
 
 /**
  * The core's single public entry point.
@@ -67,6 +68,7 @@ export function buildPages(sources, settings, now) {
     allModels: buildPage(models, settings, ALL_MODELS, isNew),
     whatsNew: buildPage(models.filter(isNew), settings, WHATS_NEW, isNew),
     code: buildPage(models, settings, CODE, isNew, sources),
+    image: buildPage(models, settings, IMAGE, isNew, sources),
   };
 }
 
@@ -171,6 +173,25 @@ const CODE = {
   defaultSort: { key: 'codingIndex', dir: 'desc' },
 };
 
+// Image: membership from the registry (image output). Workload: a number of
+// images at a resolution, each at the Model's per-image price for the closest
+// resolution it offers (js/image.js), from `sources.imagePricing`.
+const IMAGE_WORKLOAD = {
+  id: 'image',
+  inputs: IMAGE_INPUTS,
+  cost: (m, w, sources) => {
+    const p = perImagePrice(m, w.resolution, sources.imagePricing);
+    return p.reason ? reason(REASONS[p.reason]) : { kind: 'usd', usd: w.images * p.usd };
+  },
+};
+
+const IMAGE = {
+  workload: IMAGE_WORKLOAD,
+  includes: CAPABILITY_PAGES.find(p => p.id === 'image').includes,
+  rowOf: coreFields,
+  sortKeys: {},
+};
+
 // The default order for a page that doesn't give its own `defaultSort`.
 const NEWEST_FIRST = { key: 'created', dir: 'desc' };
 
@@ -235,7 +256,7 @@ const REASON_SET = new Set(Object.values(REASONS));
  * `settings.workloads[pageId][key]`; missing or invalid ones mean the default.
  */
 export const WORKLOADS = Object.freeze(Object.fromEntries(
-  [CODE_WORKLOAD].map(w => [w.id, w.inputs])));
+  [CODE_WORKLOAD, IMAGE_WORKLOAD].map(w => [w.id, w.inputs])));
 
 /** A page's Workload values: the viewer's, with defaults for anything missing or invalid. */
 export function workloadValues(pageId, settings) {
