@@ -1,6 +1,7 @@
 // The shell: fetching, tabs, filters and rendering around the pure core
 // (core.js). The shared table lives in table.js.
 import { buildPages, WORKLOADS, workloadValues } from './core.js';
+import { loadSettings, saveSettings, clearSaved, loadTheme, saveTheme } from './store.js';
 import { CORE_COLUMNS, COST_COLUMN, BADGES, tableHtml, attachTable, fmtUsd, esc, extraPriceLines } from './table.js';
 
 const CATALOGUE_URL = 'https://openrouter.ai/api/v1/models?output_modalities=all';
@@ -42,13 +43,23 @@ BADGES.pages = ids => ids.map(id =>
   `<a class="badge page" href="#${HASH_OF_PAGE[id]}" title="appears on the ${esc(PAGES[HASH_OF_PAGE[id]].label)} page">` +
   `${esc(PAGES[HASH_OF_PAGE[id]].label)}</a>`).join('');
 
+// The core's settings as a first-time viewer gets them; filters and sort
+// carry across tabs. A null sort (or a key the page lacks) means the page's
+// own default order. `workloads` holds each page's Workload values by page id
+// (see WORKLOADS); an absent page uses its inputs' defaults.
+// Every key here is remembered in the browser (store.js), so a new setting
+// only needs adding here.
+const DEFAULT_SETTINGS = { author: '', search: '', hideFree: false, reasoningOnly: false,
+  newWindowDays: DEFAULT_NEW_WINDOW_DAYS, sort: null, workloads: {} };
+
+// Browser storage, or null where it's missing or blocked (even reading
+// `localStorage` can throw then); store.js guards every access besides.
+const storage = (() => { try { return window.localStorage; } catch { return null; } })();
+
 const state = {
   catalogue: null, loadedAt: null, loading: false,
-  // The core's settings; filters and sort carry across tabs.
-  // A null sort (or a key the page lacks) means the page's own default order.
-  // `workloads` holds each page's Workload values by page id (see WORKLOADS).
-  settings: { author: '', search: '', hideFree: false, reasoningOnly: false,
-    newWindowDays: DEFAULT_NEW_WINDOW_DAYS, sort: null, workloads: {} },
+  settings: loadSettings(storage, DEFAULT_SETTINGS),
+  theme: loadTheme(storage),   // 'light', 'dark', or null to follow the system
   rows: [], columns: [],   // what the table is showing now
 };
 
@@ -156,6 +167,7 @@ function setWorkload(key, raw) {
   const value = input.options ? input.options.find(o => String(o.value) === raw)?.value : raw;
   state.settings.workloads = { ...state.settings.workloads,
     [pageId]: { ...state.settings.workloads[pageId], [key]: value } };
+  saveSettings(storage, state.settings);
   const hint = $('workload').querySelector(`[data-hint="${CSS.escape(key)}"]`);
   if (hint) hint.textContent = fmtCount(workloadValues(pageId, state.settings)[key]);
   render();
@@ -191,6 +203,33 @@ function priceCell(p, extra = []) {
 
 function setSetting(patch) {
   Object.assign(state.settings, patch);
+  saveSettings(storage, state.settings);
+  render();
+}
+
+// Put the settings into the filter inputs (on load and after Reset view).
+// The Author list and Workload panel follow the settings as they render.
+function showSettings() {
+  $('search').value = state.settings.search;
+  $('hideFree').checked = state.settings.hideFree;
+  $('reasoningOnly').checked = state.settings.reasoningOnly;
+  $('newWindow').value = state.settings.newWindowDays;
+  delete $('workload').dataset.page;   // rebuild it from the settings
+}
+
+const THEME_LABELS = { null: 'system', light: 'light', dark: 'dark' };
+function showTheme() {
+  if (state.theme) document.documentElement.dataset.theme = state.theme;
+  else delete document.documentElement.dataset.theme;
+  $('theme').textContent = `Theme: ${THEME_LABELS[state.theme]}`;
+}
+
+function resetView() {
+  clearSaved(storage);
+  state.settings = structuredClone(DEFAULT_SETTINGS);
+  state.theme = null;
+  showSettings();
+  showTheme();
   render();
 }
 
@@ -212,11 +251,20 @@ $('workload').addEventListener('input', e => {
   const key = e.target.dataset.workload;
   if (key) setWorkload(key, e.target.value);
 });
+$('theme').addEventListener('click', () => {
+  // system -> light -> dark -> system
+  state.theme = { null: 'light', light: 'dark', dark: null }[state.theme];
+  saveTheme(storage, state.theme);
+  showTheme();
+});
+$('reset').addEventListener('click', resetView);
 $('refresh').addEventListener('click', loadCatalogue);
 $('retry').addEventListener('click', loadCatalogue);
 addEventListener('hashchange', render);
 // Keep "loaded N min ago" honest. This only re-labels; it never refetches.
 setInterval(renderStatus, 30_000);
 
+showSettings();
+showTheme();
 render();
 loadCatalogue();

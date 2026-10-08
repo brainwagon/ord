@@ -7,6 +7,10 @@
 <meta name="description" content="Discover the models available through OpenRouter, including newly added ones, and compare what they would cost.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%230b6bcb'/%3E%3Cpath d='M4 5h8M4 8h8M4 11h5' stroke='white' stroke-width='1.5'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="css/style.css">
+<script>
+// Apply a remembered theme override before first paint (js/store.js owns the key).
+try { var t = localStorage.getItem('ord.theme.v1'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
 <script type="module" src="js/app.js"></script>
 </head>
 <body>
@@ -30,6 +34,10 @@
 <div class="panel controls">
   <button id="refresh" type="button">Refresh</button>
   <span class="status" id="status" role="status">loading…</span>
+  <span class="end">
+    <button id="theme" type="button" title="follow the system's light or dark setting, or override it">Theme: system</button>
+    <button id="reset" type="button" title="forget your Workloads, filters, sort order and theme, and return to the defaults">Reset view</button>
+  </span>
 </div>
 
 <div class="panel controls filters">
