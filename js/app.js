@@ -1,7 +1,7 @@
 // The shell: fetching, tabs, filters and rendering around the pure core
 // (core.js). The shared table lives in table.js.
 import { buildPages } from './core.js';
-import { CORE_COLUMNS, tableHtml, attachTable, fmtUsd, esc } from './table.js';
+import { CORE_COLUMNS, tableHtml, attachTable, fmtUsd, esc, extraPriceLines } from './table.js';
 
 const CATALOGUE_URL = 'https://openrouter.ai/api/v1/models?output_modalities=all';
 
@@ -11,11 +11,19 @@ const ALL_MODELS_COLUMNS = [
   { key: 'output', label: 'Output /1M', title: 'USD per 1M output tokens, as OpenRouter reports it', cell: r => priceCell(r.prices.output) },
 ];
 
+// Code's own columns. Cache, reasoning and web-search prices show on hover.
+const CODE_COLUMNS = [
+  { key: 'codingIndex', label: 'Coding', defaultDir: 'desc', title: 'Artificial Analysis coding index (higher is better)',
+    cell: r => r.codingIndex === null ? '<td class="num note" title="no coding benchmark score yet">—</td>' : `<td class="num">${r.codingIndex.toFixed(1)}</td>` },
+  { key: 'input', label: 'Input /1M', title: 'USD per 1M input tokens (base tier); hover a price for cache, reasoning and web-search prices', cell: r => priceCell(r.prices.input, extraPriceLines(r.extraPrices)) },
+  { key: 'output', label: 'Output /1M', title: 'USD per 1M output tokens (base tier); hover a price for cache, reasoning and web-search prices', cell: r => priceCell(r.prices.output, extraPriceLines(r.extraPrices)) },
+];
+
 // Hash -> page id (the key buildPages returns rows under), tab label, and the
 // page's columns after the core ones.
 const PAGES = {
   new: { id: 'whatsNew', label: "What's new" },
-  code: { id: 'code', label: 'Code' },
+  code: { id: 'code', label: 'Code', columns: CODE_COLUMNS, defaultSort: { key: 'codingIndex', dir: 'desc' }, controls: ['reasoningOnlyLabel'] },
   image: { id: 'image', label: 'Image' },
   audio: { id: 'audio', label: 'Audio' },
   video: { id: 'video', label: 'Video' },
@@ -28,7 +36,8 @@ const DEFAULT_HASH = 'new';
 const state = {
   catalogue: null, loadedAt: null, loading: false,
   // The core's settings; filters and sort carry across tabs.
-  settings: { author: '', search: '', hideFree: false, sort: { key: 'created', dir: 'desc' } },
+  // A null sort (or a key the page lacks) means the page's own default order.
+  settings: { author: '', search: '', hideFree: false, reasoningOnly: false, sort: null },
   rows: [], columns: [],   // what the table is showing now
 };
 
@@ -73,6 +82,9 @@ function render() {
     else a.removeAttribute('aria-current');
   }
   renderStatus();
+  for (const el of document.querySelectorAll('[data-page-control]')) {
+    el.hidden = !(PAGES[hash].controls || []).includes(el.id);
+  }
   const page = $('page');
   if (!state.catalogue) {
     page.innerHTML = state.loading ? '<p class="placeholder">Loading the catalogue…</p>' : '';
@@ -89,7 +101,15 @@ function render() {
   }
   state.rows = rows;
   state.columns = [...CORE_COLUMNS, ...(PAGES[hash].columns || [])];
-  page.innerHTML = tableHtml(rows, state.columns, state.settings.sort);
+  page.innerHTML = tableHtml(rows, state.columns, currentSort());
+}
+
+// The sort the table is showing: the viewer's, if this page has that column,
+// else the page's default.
+function currentSort() {
+  const page = PAGES[currentHash()], sort = state.settings.sort;
+  if (sort && state.columns.some(c => c.key === sort.key)) return sort;
+  return page.defaultSort || { key: 'created', dir: 'desc' };
 }
 
 function renderAuthors(authors) {
@@ -111,10 +131,13 @@ function renderStatus() {
   $('status').textContent = `${state.catalogue.data.length} models, loaded ${ago}`;
 }
 
-function priceCell(p) {
-  if (p.kind === 'variable') return '<td class="num note" title="price depends on the model the router picks">variable</td>';
-  if (p.kind === 'unpriced') return '<td class="num note" title="OpenRouter lists no token price for this model">unpriced</td>';
-  return `<td class="num">${fmtUsd(p.usd)}</td>`;
+// A Price cell; `extra` lines (other prices) are added to its hover text.
+function priceCell(p, extra = []) {
+  const more = extra.length ? 'Also (per 1M tokens unless noted): ' + extra.join(', ') : '';
+  const title = t => ` title="${esc([t, more].filter(Boolean).join('\n'))}"`;
+  if (p.kind === 'variable') return `<td class="num note"${title('price depends on the model the router picks')}>variable</td>`;
+  if (p.kind === 'unpriced') return `<td class="num note"${title('OpenRouter lists no token price for this model')}>unpriced</td>`;
+  return `<td class="num${more ? ' more' : ''}"${more ? title('') : ''}>${fmtUsd(p.usd)}</td>`;
 }
 
 function setSetting(patch) {
@@ -125,12 +148,13 @@ function setSetting(patch) {
 attachTable($('page'), {
   rows: () => state.rows,
   columns: () => state.columns,
-  sort: () => state.settings.sort,
+  sort: () => currentSort(),
   onSort: sort => setSetting({ sort }),
 });
 $('author').addEventListener('change', e => setSetting({ author: e.target.value }));
 $('search').addEventListener('input', e => setSetting({ search: e.target.value }));
 $('hideFree').addEventListener('change', e => setSetting({ hideFree: e.target.checked }));
+$('reasoningOnly').addEventListener('change', e => setSetting({ reasoningOnly: e.target.checked }));
 $('refresh').addEventListener('click', loadCatalogue);
 $('retry').addEventListener('click', loadCatalogue);
 addEventListener('hashchange', render);

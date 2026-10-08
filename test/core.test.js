@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { buildPages } from '../js/core.js';
 
-// Real /api/v1/models?output_modalities=all response captured 2026-10-08,
-// trimmed to 31 Models (each object byte-for-byte as returned).
+// Real /api/v1/models?output_modalities=all responses captured 2026-10-08,
+// trimmed to 35 Models (each object byte-for-byte as returned).
 const catalogue = JSON.parse(readFileSync(new URL('./fixtures/catalogue.json', import.meta.url), 'utf8'));
 const NOW = Date.parse('2026-10-08T12:00:00Z');
 
@@ -13,7 +13,7 @@ const row = id => allModels().find(r => r.id === id);
 
 test('All models lists every catalogue entry, including aliases, embeddings, rerank and routers', () => {
   const ids = allModels().map(r => r.id);
-  assert.equal(ids.length, 31);
+  assert.equal(ids.length, 35);
   for (const id of ['~anthropic/claude-opus-latest', 'voyageai/voyage-code-4',
                     'cohere/rerank-4-fast', 'openrouter/auto', 'openrouter/free']) {
     assert.ok(ids.includes(id), id);
@@ -100,7 +100,7 @@ test(':free variants are shown by default, badged free', () => {
 
 test('hide-free removes :free variants and nothing else', () => {
   const ids = buildPages({ catalogue }, { hideFree: true }, NOW).allModels.map(r => r.id);
-  assert.equal(ids.length, 31 - FREE_VARIANTS.length);
+  assert.equal(ids.length, 35 - FREE_VARIANTS.length);
   for (const id of FREE_VARIANTS) assert.ok(!ids.includes(id), id);
   assert.ok(ids.includes('poolside/laguna-s-2.1'));
 });
@@ -165,7 +165,7 @@ test('sorting by context length puts unknown lengths last, either direction', ()
 
 test('sorting by name, Author and date added', () => {
   assert.equal(sorted('name', 'asc')[0], 'anthropic/claude-opus-5.5');   // "Anthropic: …"
-  assert.equal(sorted('author', 'desc')[0], 'voyageai/voyage-code-4');
+  assert.equal(sorted('author', 'desc')[0], 'x-ai/grok-4.6');
   assert.equal(sorted('created', 'asc')[0], 'openrouter/auto');
   assert.equal(sorted('created', 'desc')[0], 'stepfun/step-5-preview');
 });
@@ -190,4 +190,111 @@ test('buildPages lists every Author in the catalogue, whatever the filters', () 
   assert.ok(authors.includes('poolside') && authors.includes('openrouter'));
   assert.equal(new Set(authors).size, authors.length);
   assert.deepEqual(authors, [...authors].sort());
+});
+
+// --- Code page ---
+
+const code = (settings = {}) => buildPages({ catalogue }, settings, NOW).code;
+const codeRow = id => code().find(r => r.id === id);
+
+test('Code lists every Model whose outputs include text, except aliases', () => {
+  assert.deepEqual(code().map(r => r.id).sort(), [
+    'anthropic/claude-opus-5.5', 'google/gemini-3.1-flash-image', 'google/gemini-3.8-flash',
+    'google/gemini-nano-banana-2.1', 'google/lyria-3-pro-preview', 'inclusionai/ling-3.1-flash',
+    'mistralai/devstral-2512', 'openai/gpt-6.1-sol', 'openai/gpt-audio', 'openai/gpt-chat-latest',
+    'openrouter/auto', 'openrouter/free', 'poolside/laguna-s-2.1', 'poolside/laguna-s-2.1:free',
+    'stepfun/step-5-preview', 'tencent/hy3', 'x-ai/grok-4.6',
+  ]);
+});
+
+test('Code excludes decisions, embeddings and rerank Models even when they also output text', () => {
+  const withText = (id, outputs) => {
+    const m = structuredClone(catalogue.data.find(m => m.id === id));
+    m.id += '-with-text';
+    m.architecture.output_modalities = outputs;
+    return m;
+  };
+  const extra = [withText('typesafe/jev-1.13', ['text', 'decisions']),
+                 withText('voyageai/voyage-code-4', ['embeddings', 'text']),
+                 withText('cohere/rerank-4-fast', ['text', 'rerank'])];
+  const ids = buildPages({ catalogue: { data: [...catalogue.data, ...extra] } }, {}, NOW).code.map(r => r.id);
+  for (const m of extra) assert.ok(!ids.includes(m.id), m.id);
+});
+
+test('Code lists by Artificial Analysis coding index, highest first, then unscored Models newest first', () => {
+  const rows = code();
+  assert.deepEqual(rows.slice(0, 3).map(r => [r.id, r.codingIndex]), [
+    ['x-ai/grok-4.6', 76.8], ['google/gemini-3.8-flash', 76.3], ['mistralai/devstral-2512', 31.3],
+  ]);
+  const unscored = rows.slice(3);
+  assert.ok(unscored.every(r => r.codingIndex === null));
+  assert.deepEqual(unscored.map(r => r.created), unscored.map(r => r.created).sort((a, b) => b - a));
+  assert.equal(unscored[0].id, 'stepfun/step-5-preview');
+});
+
+test('Code can be sorted by coding index either way, unscored Models always last', () => {
+  const asc = code({ sort: { key: 'codingIndex', dir: 'asc' } }).map(r => r.id);
+  assert.deepEqual(asc.slice(0, 3), ['mistralai/devstral-2512', 'google/gemini-3.8-flash', 'x-ai/grok-4.6']);
+  assert.deepEqual(code({ sort: { key: 'codingIndex', dir: 'desc' } }).slice(0, 3).map(r => r.id),
+    ['x-ai/grok-4.6', 'google/gemini-3.8-flash', 'mistralai/devstral-2512']);
+});
+
+const REASONING = [
+  'anthropic/claude-opus-5.5', 'google/gemini-3.1-flash-image', 'google/gemini-3.8-flash',
+  'google/gemini-nano-banana-2.1', 'inclusionai/ling-3.1-flash', 'openai/gpt-6.1-sol',
+  'poolside/laguna-s-2.1', 'poolside/laguna-s-2.1:free', 'stepfun/step-5-preview', 'tencent/hy3',
+  'x-ai/grok-4.6',
+];
+
+test('a Code Model carries a "reasoning" badge exactly when it has a reasoning field', () => {
+  assert.deepEqual(code().filter(r => r.badges.reasoning).map(r => r.id).sort(), REASONING);
+  assert.equal(codeRow('mistralai/devstral-2512').badges.reasoning, false);
+  assert.equal(codeRow('openrouter/free').badges.reasoning, false);
+});
+
+test('the reasoning toggle is off by default, and on shows only reasoning Models', () => {
+  assert.equal(code().length, 17);
+  assert.equal(code({ reasoningOnly: false }).length, 17);
+  assert.deepEqual(code({ reasoningOnly: true }).map(r => r.id).sort(), REASONING);
+  // It narrows Code only.
+  assert.equal(buildPages({ catalogue }, { reasoningOnly: true }, NOW).allModels.length, 35);
+});
+
+const usd = v => ({ kind: 'usd', usd: v });
+
+test('Code shows input and output prices per 1M tokens', () => {
+  assert.deepEqual(codeRow('x-ai/grok-4.6').prices, { input: usd(2), output: usd(6) });
+  assert.deepEqual(codeRow('mistralai/devstral-2512').prices, { input: usd(0.4), output: usd(2) });
+  assert.deepEqual(codeRow('poolside/laguna-s-2.1:free').prices, { input: usd(0), output: usd(0) });
+  assert.deepEqual(codeRow('openrouter/auto').prices,
+    { input: { kind: 'variable' }, output: { kind: 'variable' } });
+});
+
+test('Code carries cache, reasoning and web-search prices for hover, where the API gives them', () => {
+  // Token prices per 1M tokens; web search in USD per search.
+  assert.deepEqual(codeRow('google/gemini-3.8-flash').extraPrices, {
+    cacheRead: usd(0.075), cacheWrite: usd(0.0416666666667), reasoning: usd(3.75), webSearch: usd(0.014),
+  });
+  assert.deepEqual(codeRow('anthropic/claude-opus-5.5').extraPrices, {
+    cacheRead: usd(0.2), cacheWrite: usd(5), cacheWrite1h: usd(8), webSearch: usd(0.01),
+  });
+  assert.deepEqual(codeRow('mistralai/devstral-2512').extraPrices, { cacheRead: usd(0.04) });
+  assert.deepEqual(codeRow('openrouter/free').extraPrices, {});
+});
+
+test('a Code Model with tiered overrides is badged "tiered", carrying the higher rates', () => {
+  assert.deepEqual(codeRow('openai/gpt-6.1-sol').badges.tiered, [{
+    minPromptTokens: 272000, input: usd(4), output: usd(15),
+    extraPrices: { cacheRead: usd(0.2), cacheWrite: usd(5) },
+  }]);
+  assert.deepEqual(codeRow('x-ai/grok-4.6').badges.tiered, [{
+    minPromptTokens: 200000, input: usd(4), output: usd(12), extraPrices: { cacheRead: usd(1) },
+  }]);
+  // The base rates stay the Model's prices.
+  assert.deepEqual(codeRow('openai/gpt-6.1-sol').prices, { input: usd(2), output: usd(10) });
+  const tiered = code().filter(r => r.badges.tiered).map(r => r.id).sort();
+  assert.deepEqual(tiered, ['openai/gpt-6.1-sol', 'x-ai/grok-4.6']);
+  assert.equal(codeRow('anthropic/claude-opus-5.5').badges.tiered, null);
+  // Time-of-day overrides (utc_start/utc_end) aren't prompt-length tiers.
+  assert.equal(codeRow('tencent/hy3').badges.tiered, null);
 });
