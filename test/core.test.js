@@ -191,3 +191,79 @@ test('buildPages lists every Author in the catalogue, whatever the filters', () 
   assert.equal(new Set(authors).size, authors.length);
   assert.deepEqual(authors, [...authors].sort());
 });
+
+// --- What's new ---------------------------------------------------------------
+
+const DAY = 86_400_000;
+const whatsNew = (settings = {}, now = NOW) =>
+  buildPages({ catalogue }, settings, now).whatsNew;
+
+test('What\'s new lists the Models added in the last 30 days by default, newest first', () => {
+  assert.deepEqual(whatsNew().map(r => r.id), [
+    'stepfun/step-5-preview', 'elevenlabs/eleven-v4', 'google/gemini-nano-banana-2.1',
+    'inclusionai/ling-3.1-flash', 'bytedance-seed/seedream-5-0-flash',
+    'black-forest-labs/flux-3-image', 'cloudflare/clef', 'inception/mercury-decide:free',
+    'openai/gpt-6.1-sol', 'respan/span-01-lite', 'anthropic/claude-opus-5.5',
+    'typesafe/jev-1.13',
+  ]);
+});
+
+test('a Model is New up to exactly the end of the "new" window, and not a millisecond after', () => {
+  const JEV = 'typesafe/jev-1.13';
+  const added = 1789689684 * 1000;   // its `created`
+  assert.equal(catalogue.data.find(m => m.id === JEV).created * 1000, added);
+  assert.ok(whatsNew({}, added + 30 * DAY).some(r => r.id === JEV));
+  assert.ok(!whatsNew({}, added + 30 * DAY + 1).some(r => r.id === JEV));
+  assert.ok(whatsNew({ newWindowDays: 7 }, added + 7 * DAY).some(r => r.id === JEV));
+  assert.ok(!whatsNew({ newWindowDays: 7 }, added + 7 * DAY + 1).some(r => r.id === JEV));
+});
+
+test('changing the "new" window narrows or widens What\'s new', () => {
+  assert.deepEqual(whatsNew({ newWindowDays: 1 }).map(r => r.id),
+    ['stepfun/step-5-preview', 'elevenlabs/eleven-v4']);
+  assert.equal(whatsNew({ newWindowDays: 60 }).length, 15);
+});
+
+test('What\'s new includes kinds with no Capability page (embeddings, rerank, routers) but no aliases', () => {
+  const ids = whatsNew({ newWindowDays: 5000 }).map(r => r.id);
+  assert.equal(ids.length, 30);
+  for (const id of ['voyageai/voyage-code-4', 'cohere/rerank-4-fast', 'openrouter/auto']) {
+    assert.ok(ids.includes(id), id);
+  }
+  assert.ok(!ids.includes('~anthropic/claude-opus-latest'));
+});
+
+const pagesOf = id => whatsNew({ newWindowDays: 5000 }).find(r => r.id === id).badges.pages;
+
+test('each What\'s new row is badged with every Capability page its Model appears on', () => {
+  assert.deepEqual(pagesOf('google/gemini-nano-banana-2.1'), ['code', 'image']);
+  assert.deepEqual(pagesOf('anthropic/claude-opus-5.5'), ['code']);
+  assert.deepEqual(pagesOf('openai/gpt-audio'), ['code', 'audio']);
+  assert.deepEqual(pagesOf('elevenlabs/eleven-v4'), ['audio']);
+  assert.deepEqual(pagesOf('google/veo-3.1'), ['video']);
+  assert.deepEqual(pagesOf('openai/whisper-1'), ['transcription']);
+  assert.deepEqual(pagesOf('cloudflare/clef'), ['decisions']);
+  assert.deepEqual(pagesOf('openrouter/auto'), ['code', 'image']);
+});
+
+test('New models carry a "new" badge on every page, following the window', () => {
+  const pages = buildPages({ catalogue }, {}, NOW);
+  for (const [page, rows] of Object.entries(pages)) {
+    if (page === 'authors') continue;
+    for (const r of rows) {
+      const expected = (NOW - r.created) <= 30 * DAY;
+      assert.equal(r.badges.new, expected, `${page} ${r.id}`);
+    }
+  }
+  const all = settings => buildPages({ catalogue }, settings, NOW).allModels;
+  const opus = settings => all(settings).find(r => r.id === 'anthropic/claude-opus-5.5').badges.new;
+  assert.equal(opus({}), true);
+  assert.equal(opus({ newWindowDays: 7 }), false);
+  assert.equal(all({}).find(r => r.id === 'openrouter/auto').badges.new, false);
+});
+
+test('embeddings and rerank Models appear on no Capability page', () => {
+  assert.deepEqual(pagesOf('voyageai/voyage-code-4'), []);
+  assert.deepEqual(pagesOf('liquid/lfm-2.5-embedding-350m:free'), []);
+  assert.deepEqual(pagesOf('cohere/rerank-4-fast'), []);
+});
