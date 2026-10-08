@@ -93,6 +93,8 @@ export function imageView({ rerender, storage }) {
   return {
     id: 'image',
     label: 'Image',
+    description: 'Models that output images, whether generated from a text prompt or made by editing an input image, priced per image. ' +
+      'Where OpenRouter lists a per-token or per-megapixel price, the per-image cost is an estimate, marked "~".',
     columns: COLUMNS,
     // Start loading the first time the tab is shown (once per visit).
     onShow: () => {

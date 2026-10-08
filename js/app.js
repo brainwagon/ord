@@ -33,10 +33,12 @@ const storage = browserStorage();
  * What every Capability page's view (js/<page>-view.js) is given.
  * @typedef {{rerender: (opts?: {keepOrder?: boolean}) => void, storage: Storage|null}} ViewShell
  *
- * A page view is {id, label, columns?, intro?, notice?, onShow?, sources?,
- * badges?, controls?, defaultSort?}: `id` is the key buildPages returns its
- * rows under; `columns` follow the core ones (a page with a Workload also
- * gets the cost column); `intro` and `notice()` are html above the table;
+ * A page view is {id, label, columns?, description?, intro?, notice?, onShow?,
+ * sources?, badges?, controls?, defaultSort?}: `id` is the key buildPages
+ * returns its rows under; `columns` follow the core ones (a page with a
+ * Workload also gets the cost column); `description` is one or two plain
+ * sentences saying what the page lists, shown first; `intro` and `notice()`
+ * are html above the table;
  * `onShow()` runs each time the tab is shown (to fetch extra pricing data
  * once); `sources()` adds that data to the core's sources; `badges` are its
  * rows' own badge renderers; `controls` the ids of filter controls it shows.
@@ -47,14 +49,17 @@ const shell = { rerender: opts => render(opts), storage };
 
 // Hash -> page view, in tab order.
 const PAGES = {
-  new: { id: 'whatsNew', label: "What's new" },
-  code: { id: 'code', label: 'Code', columns: CODE_COLUMNS, defaultSort: { key: 'codingIndex', dir: 'desc' }, controls: ['reasoningOnlyLabel'] },
+  new: { id: 'whatsNew', label: "What's new",
+    description: 'Every New model of any kind, added within the "New within" window (30 days by default). Each is badged with the Capability pages it also appears on.' },
+  code: { id: 'code', label: 'Code', columns: CODE_COLUMNS, defaultSort: { key: 'codingIndex', dir: 'desc' }, controls: ['reasoningOnlyLabel'],
+    description: 'Models whose output is text, excluding Decisions, embedding and rerank Models, ranked by their Artificial Analysis coding index and priced per 1M input and output tokens.' },
   image: imageView(shell),
   audio: audioView(shell),
   video: videoView(shell),
   transcription: transcriptionView(shell),
   decisions: decisionsView(shell),
-  all: { id: 'allModels', label: 'All models', columns: ALL_MODELS_COLUMNS },
+  all: { id: 'allModels', label: 'All models', columns: ALL_MODELS_COLUMNS,
+    description: "Every Model in OpenRouter's catalogue, of any kind, including the ~…-latest aliases, with its token prices as OpenRouter reports them." },
 };
 const DEFAULT_HASH = 'new';
 const DEFAULT_NEW_WINDOW_DAYS = 30;
@@ -148,7 +153,8 @@ function render({ keepOrder = false } = {}) {
   state.rows = rows;
   state.shown = { hash, ids: rows.map(r => r.id) };
   state.columns = [...CORE_COLUMNS, ...(view.columns || []), ...(workload ? [COST_COLUMN] : [])];
-  page.innerHTML = (view.intro || '') + (view.notice?.() || '') + tableHtml(rows, state.columns, currentSort());
+  const description = view.description ? `<p class="page-description">${esc(view.description)}</p>` : '';
+  page.innerHTML = description + (view.intro || '') + (view.notice?.() || '') + tableHtml(rows, state.columns, currentSort());
 }
 
 // The sort the table is showing: the viewer's, if this page has that column,

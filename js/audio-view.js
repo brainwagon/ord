@@ -29,5 +29,7 @@ const COLUMNS = [
  * @param {import('./app.js').ViewShell} shell
  */
 export function audioView() {
-  return { id: 'audio', label: 'Audio', columns: COLUMNS };
+  return { id: 'audio', label: 'Audio', columns: COLUMNS,
+    description: 'Models that output speech or other audio (text-to-speech, audio chat and music), priced per 1M characters of input text ' +
+      'where the Model is billed that way. Other Models show how they are billed; hover for details.' };
 }

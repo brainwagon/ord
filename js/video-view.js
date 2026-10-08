@@ -58,6 +58,7 @@ export function videoView({ rerender }) {
   return {
     id: 'video',
     label: 'Video',
+    description: 'Models that output video, priced per second of video, with and without audio.',
     columns: COLUMNS,
     badges: BADGES,
     onShow: () => { if (status === 'idle') load(); },

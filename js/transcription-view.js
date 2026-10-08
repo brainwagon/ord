@@ -13,5 +13,6 @@ const COLUMNS = [
  * @param {import('./app.js').ViewShell} shell
  */
 export function transcriptionView() {
-  return { id: 'transcription', label: 'Transcription', columns: COLUMNS };
+  return { id: 'transcription', label: 'Transcription', columns: COLUMNS,
+    description: 'Models that turn audio into text, priced per minute of audio. A "—" means no price can be computed; hover for why.' };
 }

@@ -11,8 +11,10 @@ const flagCell = (on, title) => on
   ? `<td class="flag" title="${title}">✓</td>`
   : '<td class="flag"></td>';
 
+const DESCRIPTION = 'Models that answer through OpenRouter\'s Decisions API, priced by the input tokens of a batch of decisions.';
+
 const INTRO = '<p class="page-intro"><span class="badge warn">alpha</span> ' +
-  'These Models answer through OpenRouter\'s Decisions API, which is in alpha and may change. ' +
+  'The Decisions API is in alpha and may change. ' +
   `See <a href="${API_URL}" target="_blank" rel="noopener">OpenRouter's Decisions API reference</a> ` +
   `(and its <a href="${GUIDE_URL}" target="_blank" rel="noopener">guide to Jev and the Decisions API</a>).</p>`;
 
@@ -28,5 +30,5 @@ const COLUMNS = [
  * @param {import('./app.js').ViewShell} shell
  */
 export function decisionsView() {
-  return { id: 'decisions', label: 'Decisions', intro: INTRO, columns: COLUMNS };
+  return { id: 'decisions', label: 'Decisions', description: DESCRIPTION, intro: INTRO, columns: COLUMNS };
 }
