@@ -42,3 +42,4 @@ Then open <http://localhost:8000/>. ES modules won't load from `file://`.
 
 `test/fixtures/catalogue.json` was captured on 2026-10-08.
 `test/fixtures/transcription.json` (four more transcription Models) was captured on 2026-10-08.
+`test/fixtures/decisions.json` (every Decisions Model, plus one text Model) was captured on 2026-10-08.

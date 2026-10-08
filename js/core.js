@@ -1,6 +1,7 @@
 // The dashboard's pure core: raw OpenRouter responses + viewer settings + the
 // current time in, the rows each page shows out. No DOM, no network.
 import { transcriptionPage } from './transcription.js';
+import { decisionsPage } from './decisions.js';
 
 /**
  * The core's single public entry point.
@@ -74,6 +75,7 @@ export function buildPages(sources, settings, now) {
     whatsNew: buildPage(models.filter(isNew), settings, WHATS_NEW, isNew),
     code: buildPage(models, settings, CODE, isNew, sources),
     transcription: buildPage(models, settings, TRANSCRIPTION, isNew, sources),
+    decisions: buildPage(models, settings, DECISIONS, isNew, sources),
   };
 }
 
@@ -237,6 +239,9 @@ const REASON_SET = new Set(Object.values(REASONS));
 // Transcription: minutes of audio, priced per second (js/transcription.js).
 const TRANSCRIPTION = transcriptionPage({ REASONS, coreFields, includes: CAPABILITY_PAGES.find(p => p.id === 'transcription').includes });
 
+// Decisions: a batch of decisions, priced on input tokens (js/decisions.js).
+const DECISIONS = decisionsPage({ coreFields, tokenCost, includes: CAPABILITY_PAGES.find(p => p.id === 'decisions').includes });
+
 /**
  * Each page's Workload inputs, keyed by page id, for the shell to render. A
  * WorkloadInput is {key, label, default, ...}: a number (`step`, `min`
@@ -245,7 +250,7 @@ const TRANSCRIPTION = transcriptionPage({ REASONS, coreFields, includes: CAPABIL
  * `settings.workloads[pageId][key]`; missing or invalid ones mean the default.
  */
 export const WORKLOADS = Object.freeze(Object.fromEntries(
-  [CODE_WORKLOAD, TRANSCRIPTION.workload].map(w => [w.id, w.inputs])));
+  [CODE_WORKLOAD, TRANSCRIPTION.workload, DECISIONS.workload].map(w => [w.id, w.inputs])));
 
 /** A page's Workload values: the viewer's, with defaults for anything missing or invalid. */
 export function workloadValues(pageId, settings) {
