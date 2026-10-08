@@ -63,6 +63,14 @@ This needs Node 18 or later and nothing else.
 
 Then open <http://localhost:8000/>. ES modules won't load from `file://`.
 
+## Deploy
+
+A push to `main` is a deploy: `.github/workflows/pages.yml` runs `node --test`
+and, only when it passes, publishes the repo to GitHub Pages at
+<https://mvandewettering.com/ord/>. Follow a run with `gh run watch`. Browsers keep
+each file for up to 10 minutes (`max-age=600`), so check a deploy with a hard
+refresh (Ctrl+Shift+R).
+
 ## Refresh a fixture
 
     curl -sS --max-time 15 'https://openrouter.ai/api/v1/models?output_modalities=all' -o raw.json
