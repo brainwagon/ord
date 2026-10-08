@@ -31,6 +31,7 @@ const REASON_HINTS = {
   'unit unclear': "the price's unit is unclear, so no cost is computed",
   'variable': 'price depends on the model the router picks',
   'pricing data not loaded': "this page's pricing data hasn't loaded",
+  'priced by resolution': 'the rate depends on the output resolution, which the Workload doesn\'t set',
 };
 
 export function costCell(c) {

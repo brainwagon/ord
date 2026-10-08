@@ -2,6 +2,7 @@
 // (core.js). The shared table lives in table.js.
 import { buildPages, WORKLOADS, workloadValues } from './core.js';
 import { loadSettings, saveSettings, clearSaved, loadTheme, saveTheme } from './store.js';
+import { videoPage } from './video-page.js';
 import { CORE_COLUMNS, COST_COLUMN, BADGES, tableHtml, attachTable, fmtUsd, esc, extraPriceLines, costCell } from './table.js';
 import { DECISIONS_VIEW } from './decisions-view.js';
 import { AUDIO_COLUMNS } from './audio-view.js';
@@ -30,7 +31,7 @@ const PAGES = {
   code: { id: 'code', label: 'Code', columns: CODE_COLUMNS, defaultSort: { key: 'codingIndex', dir: 'desc' }, controls: ['reasoningOnlyLabel'] },
   image: { id: 'image', label: 'Image' },
   audio: { id: 'audio', label: 'Audio', columns: AUDIO_COLUMNS },
-  video: { id: 'video', label: 'Video' },
+  video: videoPage(() => render()),
   transcription: { id: 'transcription', label: 'Transcription', columns: [{ key: 'perMinute', label: 'Per minute', title: 'USD per minute of audio; "—" when it can\'t be computed (hover for why)', cell: r => r.perMinute.kind === 'usd' ? `<td class="num">${fmtUsd(r.perMinute.usd)}</td>` : costCell(r.perMinute) }] },
   decisions: { id: 'decisions', label: 'Decisions', ...DECISIONS_VIEW },
   all: { id: 'allModels', label: 'All models', columns: ALL_MODELS_COLUMNS },
@@ -107,6 +108,7 @@ function render() {
   }
   renderStatus();
   renderWorkload(PAGES[hash].id);
+  PAGES[hash].onShow?.();   // a page's extra pricing data, fetched on first view
   for (const el of document.querySelectorAll('[data-page-control]')) {
     el.hidden = !(PAGES[hash].controls || []).includes(el.id);
   }
@@ -115,7 +117,8 @@ function render() {
     page.innerHTML = state.loading ? '<p class="placeholder">Loading the catalogue…</p>' : '';
     return;
   }
-  const pages = buildPages({ catalogue: state.catalogue }, state.settings, Date.now());
+  const sources = Object.assign({ catalogue: state.catalogue }, ...Object.values(PAGES).map(p => p.sources?.()));
+  const pages = buildPages(sources, state.settings, Date.now());
   renderAuthors(pages.authors);
   const rows = pages[PAGES[hash].id];
   if (!rows) {
@@ -127,7 +130,7 @@ function render() {
   state.rows = rows;
   state.columns = [...CORE_COLUMNS, ...(PAGES[hash].columns || []),
     ...(WORKLOADS[PAGES[hash].id] ? [COST_COLUMN] : [])];
-  page.innerHTML = (PAGES[hash].intro || '') + tableHtml(rows, state.columns, currentSort());
+  page.innerHTML = (PAGES[hash].intro || '') + (PAGES[hash].notice?.() || '') + tableHtml(rows, state.columns, currentSort());
 }
 
 // The sort the table is showing: the viewer's, if this page has that column,
