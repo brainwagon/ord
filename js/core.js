@@ -2,6 +2,7 @@
 // current time in, the rows each page shows out. No DOM, no network.
 import { transcriptionPage } from './transcription.js';
 import { decisionsPage } from './decisions.js';
+import { audioPage } from './audio.js';
 
 /**
  * The core's single public entry point.
@@ -38,7 +39,10 @@ import { decisionsPage } from './decisions.js';
  * Models with one input price and no output price, "unit unclear" above
  * $0.01/s, and per-token for Models with both prices.
  *
- * Every page with a Workload (WORKLOADS; Code, Transcription) adds `cost`, a Cost:
+ * Audio (js/audio.js) adds `charPrice` (USD per 1M characters, or null)
+ * and `billing` (how the Model is billed); its Workload is characters to speak.
+ *
+ * Every page with a Workload (WORKLOADS; Code, Transcription, Decisions, Audio) adds `cost`, a Cost:
  * {kind: 'usd', usd} for the viewer's Workload, or {kind: 'reason', reason}
  * with one of REASONS. Code's cost is input tokens × `prompt` + output tokens
  * × `completion`, at the base tier. Sorting by cost puts USD amounts first,
@@ -76,6 +80,7 @@ export function buildPages(sources, settings, now) {
     code: buildPage(models, settings, CODE, isNew, sources),
     transcription: buildPage(models, settings, TRANSCRIPTION, isNew, sources),
     decisions: buildPage(models, settings, DECISIONS, isNew, sources),
+    audio: buildPage(models, settings, AUDIO, isNew, sources),
   };
 }
 
@@ -242,6 +247,9 @@ const TRANSCRIPTION = transcriptionPage({ REASONS, coreFields, includes: CAPABIL
 // Decisions: a batch of decisions, priced on input tokens (js/decisions.js).
 const DECISIONS = decisionsPage({ coreFields, tokenCost, includes: CAPABILITY_PAGES.find(p => p.id === 'decisions').includes });
 
+// Audio: characters to speak, priced per character (js/audio.js).
+const AUDIO = audioPage({ REASONS, coreFields, includes: CAPABILITY_PAGES.find(p => p.id === 'audio').includes });
+
 /**
  * Each page's Workload inputs, keyed by page id, for the shell to render. A
  * WorkloadInput is {key, label, default, ...}: a number (`step`, `min`
@@ -250,7 +258,7 @@ const DECISIONS = decisionsPage({ coreFields, tokenCost, includes: CAPABILITY_PA
  * `settings.workloads[pageId][key]`; missing or invalid ones mean the default.
  */
 export const WORKLOADS = Object.freeze(Object.fromEntries(
-  [CODE_WORKLOAD, TRANSCRIPTION.workload, DECISIONS.workload].map(w => [w.id, w.inputs])));
+  [CODE_WORKLOAD, TRANSCRIPTION.workload, DECISIONS.workload, AUDIO.workload].map(w => [w.id, w.inputs])));
 
 /** A page's Workload values: the viewer's, with defaults for anything missing or invalid. */
 export function workloadValues(pageId, settings) {

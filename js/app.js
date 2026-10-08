@@ -4,6 +4,7 @@ import { buildPages, WORKLOADS, workloadValues } from './core.js';
 import { loadSettings, saveSettings, clearSaved, loadTheme, saveTheme } from './store.js';
 import { CORE_COLUMNS, COST_COLUMN, BADGES, tableHtml, attachTable, fmtUsd, esc, extraPriceLines, costCell } from './table.js';
 import { DECISIONS_VIEW } from './decisions-view.js';
+import { AUDIO_COLUMNS } from './audio-view.js';
 
 const CATALOGUE_URL = 'https://openrouter.ai/api/v1/models?output_modalities=all';
 
@@ -28,7 +29,7 @@ const PAGES = {
   new: { id: 'whatsNew', label: "What's new" },
   code: { id: 'code', label: 'Code', columns: CODE_COLUMNS, defaultSort: { key: 'codingIndex', dir: 'desc' }, controls: ['reasoningOnlyLabel'] },
   image: { id: 'image', label: 'Image' },
-  audio: { id: 'audio', label: 'Audio' },
+  audio: { id: 'audio', label: 'Audio', columns: AUDIO_COLUMNS },
   video: { id: 'video', label: 'Video' },
   transcription: { id: 'transcription', label: 'Transcription', columns: [{ key: 'perMinute', label: 'Per minute', title: 'USD per minute of audio; "—" when it can\'t be computed (hover for why)', cell: r => r.perMinute.kind === 'usd' ? `<td class="num">${fmtUsd(r.perMinute.usd)}</td>` : costCell(r.perMinute) }] },
   decisions: { id: 'decisions', label: 'Decisions', ...DECISIONS_VIEW },
