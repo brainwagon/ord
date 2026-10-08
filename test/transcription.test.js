@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { buildPages, WORKLOADS, workloadValues } from '../js/core.js';
+import { buildPages } from '../js/core.js';
 
 // Real /api/v1/models?output_modalities=all responses captured 2026-10-08:
 // the shared catalogue (whisper-1, both Microsoft MAI models and
@@ -34,8 +34,9 @@ test('Transcription lists every Model whose outputs include transcription, newes
 });
 
 test('the Transcription Workload is minutes of audio, defaulting to 60', () => {
-  assert.deepEqual(WORKLOADS.transcription.map(i => [i.key, i.default]), [['minutes', 60]]);
-  assert.deepEqual(workloadValues('transcription', {}), { minutes: 60 });
+  const { inputs, values } = buildPages({ catalogue }, {}, NOW).workloads.transcription;
+  assert.deepEqual(inputs.map(i => [i.key, i.default]), [['minutes', 60]]);
+  assert.deepEqual(values, { minutes: 60 });
 });
 
 test('a Model with one input price and no output price is costed per second of audio', () => {

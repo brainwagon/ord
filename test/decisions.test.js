@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { buildPages, WORKLOADS, workloadValues } from '../js/core.js';
+import { buildPages } from '../js/core.js';
 
 // Real /api/v1/models?output_modalities=all response captured 2026-10-08,
 // trimmed to every Decisions Model (15, one a ~-latest alias) plus one text
@@ -43,7 +43,7 @@ test('a Decisions Model is "no charge" when listed at $0; "free" stays the :free
 });
 
 test('Decisions costs each Model for the default Workload of 1,000 decisions × 2,000 input tokens', () => {
-  assert.deepEqual(workloadValues('decisions', {}), { decisions: 1000, tokensPerDecision: 2000 });
+  assert.deepEqual(buildPages({ catalogue }, {}, NOW).workloads.decisions.values, { decisions: 1000, tokensPerDecision: 2000 });
   // 2,000,000 input tokens at the input price; decision models have no output price.
   assert.deepEqual(row('cloudflare/clef').cost, { kind: 'usd', usd: 0.48 });                    // $0.24 /1M
   assert.deepEqual(row('perplexity/pplx-decider-v1.1-27b').cost, { kind: 'usd', usd: 0.04 });    // $0.02 /1M
@@ -78,6 +78,6 @@ test('Decisions can be sorted by the accepts-images and no-charge columns', () =
 });
 
 test('Decisions declares its Workload inputs for the shell', () => {
-  assert.deepEqual(WORKLOADS.decisions.map(i => [i.key, i.default]),
+  assert.deepEqual(buildPages({ catalogue }, {}, NOW).workloads.decisions.inputs.map(i => [i.key, i.default]),
     [['decisions', 1000], ['tokensPerDecision', 2000]]);
 });

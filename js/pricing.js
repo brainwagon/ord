@@ -24,8 +24,8 @@ export const reason = key => {
   return { kind: 'reason', reason: REASONS[key] };
 };
 
-/** A Price or Cost of `v` USD, rounded (see roundUsd). */
-export const usd = v => ({ kind: 'usd', usd: roundUsd(v) });
+/** A Price or Cost of `v` USD. */
+export const usd = v => ({ kind: 'usd', usd: v });
 
 /** Whether `p` is a well-formed Price or Cost. */
 export const isPrice = p =>

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { buildPages, WORKLOADS, REASONS, workloadValues } from '../js/core.js';
+import { buildPages } from '../js/core.js';
 
 // Real /api/v1/models?output_modalities=all responses captured 2026-10-08,
 // trimmed to 35 Models (each object byte-for-byte as returned).
@@ -49,20 +49,23 @@ test('All models shows raw input and output prices in USD per 1M tokens', () => 
   assert.deepEqual(row('typesafe/jev-1.13').prices.input, { kind: 'usd', usd: 0.042 });
 });
 
+const variable = { kind: 'reason', reason: 'variable' };
+const unpricedPrice = { kind: 'reason', reason: 'unpriced' };
+
 test('a -1 price (variable-priced router) is "variable", never a negative price', () => {
   assert.deepEqual(row('openrouter/auto').prices,
-    { input: { kind: 'variable' }, output: { kind: 'variable' } });
+    { input: variable, output: variable });
 });
 
 test('zero prices on a Model that is not a free offering are "unpriced", never $0', () => {
-  const unpriced = { input: { kind: 'unpriced' }, output: { kind: 'unpriced' } };
+  const unpriced = { input: unpricedPrice, output: unpricedPrice };
   for (const id of ['google/veo-3.1', 'runway/gen-4.5', 'black-forest-labs/flux-3-image',
                     'google/lyria-3-pro-preview', 'cohere/rerank-4-fast']) {
     assert.deepEqual(row(id).prices, unpriced, id);
   }
   // A speech Model billed on its input: the zero output price isn't "free".
   assert.deepEqual(row('elevenlabs/eleven-v4').prices,
-    { input: { kind: 'usd', usd: 40 }, output: { kind: 'unpriced' } });
+    { input: { kind: 'usd', usd: 40 }, output: unpricedPrice });
 });
 
 test('no price on All models is ever negative', () => {
@@ -179,7 +182,7 @@ test('~-latest aliases appear on All models and on no other page', () => {
   const pages = buildPages({ catalogue }, {}, NOW);
   assert.ok(pages.allModels.some(r => r.id === ALIAS));
   for (const [page, rows] of Object.entries(pages)) {
-    if (page === 'allModels' || page === 'authors') continue;
+    if (page === 'allModels' || page === 'authors' || page === 'workloads') continue;
     assert.ok(!rows.some(r => r.id === ALIAS), page);
   }
 });
@@ -267,7 +270,7 @@ test('Code shows input and output prices per 1M tokens', () => {
   assert.deepEqual(codeRow('mistralai/devstral-2512').prices, { input: usd(0.4), output: usd(2) });
   assert.deepEqual(codeRow('poolside/laguna-s-2.1:free').prices, { input: usd(0), output: usd(0) });
   assert.deepEqual(codeRow('openrouter/auto').prices,
-    { input: { kind: 'variable' }, output: { kind: 'variable' } });
+    { input: variable, output: variable });
 });
 
 test('Code carries cache, reasoning and web-search prices for hover, where the API gives them', () => {
@@ -356,7 +359,7 @@ test('each What\'s new row is badged with every Capability page its Model appear
 test('New models carry a "new" badge on every page, following the window', () => {
   const pages = buildPages({ catalogue }, {}, NOW);
   for (const [page, rows] of Object.entries(pages)) {
-    if (page === 'authors') continue;
+    if (page === 'authors' || page === 'workloads') continue;
     for (const r of rows) {
       const expected = (NOW - r.created) <= 30 * DAY;
       assert.equal(r.badges.new, expected, `${page} ${r.id}`);
@@ -406,7 +409,7 @@ test('a missing, blank or negative Workload value falls back sensibly', () => {
   const w = code => ({ workloads: { code } });
   assert.deepEqual(cost('anthropic/claude-opus-5.5', w({ inputTokens: 'lots', outputTokens: null })), usd(32));
   assert.deepEqual(cost('anthropic/claude-opus-5.5', w({ inputTokens: '2000000', outputTokens: -5 })), usd(8));
-  assert.deepEqual(workloadValues('code', {}), { inputTokens: 3_000_000, outputTokens: 1_000_000 });
+  assert.deepEqual(buildPages({ catalogue }, w({}), NOW).workloads.code.values, { inputTokens: 3_000_000, outputTokens: 1_000_000 });
 });
 
 test('variable-priced routers get a "variable" reason, never a cost', () => {
@@ -437,14 +440,25 @@ test('sorting by cost puts computed costs first, cheapest first with :free leadi
   }
 });
 
-test('every Workload input is declared with a key, label and default', () => {
-  assert.deepEqual(WORKLOADS.code.map(i => [i.key, i.default]),
+test('every page with a Workload declares its inputs, each with a key, label and default', () => {
+  const pages = buildPages({ catalogue }, {}, NOW);
+  assert.deepEqual(Object.keys(pages.workloads).sort(),
+    ['audio', 'code', 'decisions', 'image', 'transcription', 'video']);
+  assert.deepEqual(pages.workloads.code.inputs.map(i => [i.key, i.default]),
     [['inputTokens', 3_000_000], ['outputTokens', 1_000_000]]);
-  for (const inputs of Object.values(WORKLOADS)) {
+  for (const { inputs } of Object.values(pages.workloads)) {
     for (const i of inputs) assert.ok(i.key && i.label && i.default !== undefined, JSON.stringify(i));
   }
-  assert.deepEqual(Object.values(REASONS).sort(),
-    ['per-token pricing', 'priced by resolution', 'pricing data not loaded', 'unit unclear', 'unpriced', 'variable']);
+});
+
+test('every cost is a USD amount or one of the known reasons', () => {
+  const KNOWN = ['per-token pricing', 'priced by resolution', 'pricing data not loaded', 'unit unclear', 'unpriced', 'variable'];
+  const pages = buildPages({ catalogue }, {}, NOW);
+  for (const id of Object.keys(pages.workloads)) {
+    for (const r of pages[id]) {
+      assert.ok(r.cost.kind === 'usd' ? r.cost.usd >= 0 : KNOWN.includes(r.cost.reason), `${id} ${r.id}`);
+    }
+  }
 });
 
 test('pages without a Workload carry no cost', () => {
@@ -475,7 +489,7 @@ test('a Model with a missing or non-numeric price is "unpriced" on its own row; 
   const find = (page, id) => pages[page].find(r => r.id === id);
   for (const id of ['x/no-pricing', 'x/garbled-text']) {
     assert.deepEqual(find('code', id).cost, unpriced, id);
-    assert.notEqual(find('allModels', id).prices.input.kind, 'usd', id);
+    assert.deepEqual(find('allModels', id).prices.input, unpriced, id);
   }
   assert.deepEqual(find('decisions', 'x/garbled-decisions').cost, unpriced);
   assert.deepEqual(find('transcription', 'x/garbled-transcription').cost, unpriced);
@@ -484,7 +498,7 @@ test('a Model with a missing or non-numeric price is "unpriced" on its own row; 
   assert.ok(find('video', 'x/no-pricing-video'));
   // No USD figure anywhere is NaN.
   for (const [page, rows] of Object.entries(pages)) {
-    if (!Array.isArray(rows) || page === 'authors') continue;
+    if (!Array.isArray(rows)) continue;   // authors, workloads
     for (const r of rows) {
       for (const v of [r.cost, r.prices?.input, r.prices?.output, r.perMinute, r.charPrice]) {
         assert.ok(!v || v.kind !== 'usd' || Number.isFinite(v.usd), `${page} ${r.id}`);

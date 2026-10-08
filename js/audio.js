@@ -3,7 +3,7 @@
 // core.js's shared pipeline (see the comment above the page definitions there).
 // Pure: no DOM, no network.
 
-import { parsePrice, roundUsd } from './pricing.js';
+import { parsePrice, roundUsd, reason, usd, isFreeVariant } from './pricing.js';
 
 // How a speech or audio Model is billed, from its catalogue prices. OpenRouter's
 // TTS guide (docs/guides/overview/multimodal/tts) says most TTS Models are
@@ -25,10 +25,10 @@ function billingOf(m) {
   const prompt = n('prompt'), completion = n('completion');
   if ([prompt, completion, n('audio'), n('audio_output')].includes(null)) return { unit: 'unpriced' };
   const audioTokens = n('audio') || n('audio_output');
-  const speech = m.architecture.output_modalities.includes('speech');
+  const speech = (m.architecture?.output_modalities || []).includes('speech');
   if ([prompt, completion, n('audio'), n('audio_output')].some(v => v < 0)) return { unit: 'variable' };
   if (!prompt && !completion && !audioTokens) {
-    return m.id.endsWith(':free') ? { unit: 'character', usd: 0 } : { unit: 'unpriced' };
+    return isFreeVariant(m.id) ? { unit: 'character', usd: 0 } : { unit: 'unpriced' };
   }
   if (audioTokens || (prompt && completion)) return { unit: 'token' };
   if (speech && prompt) return { unit: 'character', usd: prompt };
@@ -36,16 +36,16 @@ function billingOf(m) {
   return { unit: 'unclear' };
 }
 
+// The reason (a REASONS key) a Model billed some other way has no character cost.
 const REASON_OF_UNIT = { token: 'perToken', second: 'unitUnclear', unclear: 'unitUnclear',
   unpriced: 'unpriced', variable: 'variable' };
 
 /**
- * The Audio page definition. The core passes in what the page needs from it,
- * so this module imports nothing.
+ * The Audio page definition.
  *
- * @param {{REASONS: object, coreFields: (m: object) => object, includes: (m: object) => boolean}} core
+ * @param {import('./core.js').PageCore} core
  */
-export function audioPage({ REASONS, coreFields, includes }) {
+export function audioPage({ coreFields, includes }) {
   const workload = {
     id: 'audio',
     inputs: [
@@ -53,8 +53,7 @@ export function audioPage({ REASONS, coreFields, includes }) {
     ],
     cost: (m, w) => {
       const b = billingOf(m);
-      if (b.unit === 'character') return { kind: 'usd', usd: w.characters * b.usd };
-      return { kind: 'reason', reason: REASONS[REASON_OF_UNIT[b.unit]] };
+      return b.unit === 'character' ? usd(w.characters * b.usd) : reason(REASON_OF_UNIT[b.unit]);
     },
   };
 
@@ -68,7 +67,7 @@ export function audioPage({ REASONS, coreFields, includes }) {
       ? { unit: b.unit, tokenPrices: tokenPrices(m.pricing) } : b;
     return {
       ...coreFields(m),
-      charPrice: b.unit === 'character' ? { kind: 'usd', usd: perMillion(b.usd) } : null,
+      charPrice: b.unit === 'character' ? usd(perMillion(b.usd)) : null,
       billing,
     };
   }

@@ -1,12 +1,14 @@
-// The Image page's shell: its entry in app.js's page table, and its extra
-// pricing data, fetched only once the tab is first opened: OpenRouter's image-models listing, then each
-// listed Model's endpoints resource (its per-image prices), a few at a time.
-// Every response is kept in browser storage for several hours; a failed
-// request is never stored, so it's retried on the next visit. The core
-// (js/image.js) prices from what `sources()` returns, so rows fill in as
-// responses arrive, and the other tabs never wait on any of this.
-
+// The Image page's part of the shell (app.js): its per-image price column,
+// and its extra pricing data, fetched only once the tab is first opened:
+// OpenRouter's image-models listing, then each listed Model's endpoints
+// resource (its per-image prices), a few at a time. Every response is kept in
+// browser storage for several hours; a failed request is never stored, so
+// it's retried on the next visit. The core (js/image.js) prices from what
+// `sources()` returns, so rows fill in as responses arrive, and the other
+// tabs never wait on any of this.
 import { esc, fmtUsd, costCell } from './table.js';
+import { fetchJson } from './fetch-json.js';
+import { loadJson, saveJson } from './store.js';
 
 // The per-image price used for the Workload's resolution, with the resolution
 // it's for ("$0.048 @1K"), or "—" and the reason.
@@ -25,19 +27,12 @@ const CONCURRENCY = 4;
 const REDRAW_MS = 250;                      // batch redraws as responses land
 
 /**
- * The Image page's entry in the shell's page table (see videoPage for the
- * same hooks).
- * @param {(opts?: {keepOrder?: boolean}) => void} rerender called (batched)
- *   whenever more data or a failure arrives; `keepOrder` while more is on
- *   its way
- * @returns {{id, label, onShow: () => void, notice: () => string,
- *   sources: () => {imagePricing?: {models, endpoints}}}}
+ * The Image page's view (see the page views in app.js).
+ * @param {import('./app.js').ViewShell} shell
  */
-export function imagePage(rerender) {
-  // Browser storage, or null where it's missing or blocked; every access is guarded.
-  const storage = (() => { try { return window.localStorage; } catch { return null; } })();
+export function imageView({ rerender, storage }) {
   // cache: {models: {at, body}, endpoints: {[id]: {at, body}}}, fresh entries only.
-  const cache = loadCache(storage, Date.now());
+  const cache = freshCache(loadJson(storage, CACHE_KEY), Date.now());
   const s = { started: false, models: null, endpoints: {}, total: 0, failed: 0, error: null, pending: 0 };
   let redraw = null;
   // While prices stream in, cells update but the rows hold their order (the
@@ -46,17 +41,14 @@ export function imagePage(rerender) {
     clearTimeout(redraw);
     redraw = setTimeout(() => rerender({ keepOrder: s.pending > 0 }), REDRAW_MS);
   };
-  const remember = (put) => {
-    put(cache, { at: Date.now() });
-    saveCache(storage, cache);
-  };
 
   async function run() {
     let listing = cache.models?.body;
     if (!listing) {
       try {
         listing = await fetchJson(LISTING_URL, b => Array.isArray(b?.data));
-        remember((c, e) => { c.models = { ...e, body: listing }; });
+        cache.models = { at: Date.now(), body: listing };
+        saveJson(storage, CACHE_KEY, cache);
       } catch (err) {
         s.error = err.message;
         changed();
@@ -79,7 +71,8 @@ export function imagePage(rerender) {
         try {
           const body = await fetchJson(API_ORIGIN + m.endpoints, b => Array.isArray(b?.endpoints));
           s.endpoints = { ...s.endpoints, [m.id]: body };
-          remember((c, e) => { c.endpoints[m.id] = { ...e, body }; });
+          cache.endpoints[m.id] = { at: Date.now(), body };
+          saveJson(storage, CACHE_KEY, cache);
         } catch {
           s.failed++;
         }
@@ -92,7 +85,7 @@ export function imagePage(rerender) {
 
   const status = () => {
     if (s.error) return `Couldn't load image prices from OpenRouter: ${s.error}. They'll be retried on your next visit.`;
-    if (!s.models) return 'Loading image prices…';
+    if (!s.models) return 'loading prices…';
     if (s.pending) return `loading prices ${s.total - s.pending}/${s.total}`;
     if (s.failed) return `Couldn't load image prices for ${s.failed} of ${s.total} Models; ` +
       'they show "pricing data not loaded" and will be retried on your next visit.';
@@ -122,25 +115,11 @@ export function imagePage(rerender) {
   };
 }
 
-async function fetchJson(url, valid) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`OpenRouter answered ${res.status} ${res.statusText}`.trim());
-  const body = await res.json();
-  if (!valid(body)) throw new Error('OpenRouter sent an unexpected response');
-  return body;
-}
-
-// The cache as stored, keeping only entries younger than TTL_MS. Every
-// access is guarded: a missing, blocked or corrupt store means an empty cache.
-function loadCache(storage, now) {
-  let saved = null;
-  try { saved = JSON.parse(storage.getItem(CACHE_KEY)); } catch {}
+// The saved cache, keeping only entries younger than TTL_MS; anything
+// missing or malformed means an empty cache.
+function freshCache(saved, now) {
   const fresh = e => e && typeof e === 'object' && now - e.at < TTL_MS && e.body ? e : undefined;
   const endpoints = {};
   for (const [id, e] of Object.entries(saved?.endpoints || {})) if (fresh(e)) endpoints[id] = e;
   return { models: fresh(saved?.models), endpoints };
-}
-
-function saveCache(storage, cache) {
-  try { storage.setItem(CACHE_KEY, JSON.stringify(cache)); } catch {}
 }

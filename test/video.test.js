@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { buildPages, REASONS, workloadValues } from '../js/core.js';
+import { buildPages } from '../js/core.js';
 
 // Real responses captured 2026-10-08, each Model object byte-for-byte as
 // returned: the catalogue (/api/v1/models?output_modalities=all) trimmed to its
@@ -27,14 +27,14 @@ test('Video lists every Model whose outputs include video', () => {
 test('until the video listing loads, every Video row says "pricing data not loaded"', () => {
   const rows = video({}, { catalogue });
   assert.equal(rows.length, 30);
-  for (const r of rows) assert.deepEqual(r.cost, because(REASONS.notLoaded), r.id);
-  for (const r of rows) assert.deepEqual(r.rates, { withAudio: because(REASONS.notLoaded),
-    withoutAudio: because(REASONS.notLoaded) }, r.id);
+  for (const r of rows) assert.deepEqual(r.cost, because('pricing data not loaded'), r.id);
+  for (const r of rows) assert.deepEqual(r.rates, { withAudio: because('pricing data not loaded'),
+    withoutAudio: because('pricing data not loaded') }, r.id);
 });
 
 test('a listing that failed to load (or came back malformed) also says "pricing data not loaded"', () => {
   for (const bad of [undefined, null, {}, { data: 'nope' }]) {
-    assert.deepEqual(row('google/veo-3.1', {}, { catalogue, videoModels: bad }).cost, because(REASONS.notLoaded));
+    assert.deepEqual(row('google/veo-3.1', {}, { catalogue, videoModels: bad }).cost, because('pricing data not loaded'));
   }
 });
 
@@ -73,28 +73,28 @@ test('a minimum charge per generation is a floor on the clip\'s cost (Runway Ale
 
 test('Seedance\'s token SKUs get the per-token reason, never a cost', () => {
   for (const id of ['bytedance/seedance-2.5', 'bytedance/seedance-2.0', 'bytedance/seedance-1-5-pro']) {
-    assert.deepEqual(cost(id), because(REASONS.perToken), id);
-    assert.deepEqual(cost(id, { audio: 'off' }), because(REASONS.perToken), id);
-    assert.deepEqual(row(id).rates.withoutAudio, because(REASONS.perToken), id);
+    assert.deepEqual(cost(id), because('per-token pricing'), id);
+    assert.deepEqual(cost(id, { audio: 'off' }), because('per-token pricing'), id);
+    assert.deepEqual(row(id).rates.withoutAudio, because('per-token pricing'), id);
   }
 });
 
 test('a Model priced only per resolution (or per megapixel-second) gets "priced by resolution"', () => {
   for (const id of ['alibaba/wan-3.0', 'x-ai/grok-imagine-video', 'heygen/heygen-video-1',
                     'alibaba/wan-2.6', 'black-forest-labs/flux-video-upscale']) {
-    assert.deepEqual(cost(id), because(REASONS.byResolution), id);
+    assert.deepEqual(cost(id), because('priced by resolution'), id);
   }
 });
 
 test('an unrecognised SKU makes the rate "unit unclear" rather than a guess', () => {
   const listing = structuredClone(videoModels);
   listing.data.find(m => m.id === 'google/veo-3.1').pricing_skus.cents_per_frame = '2';
-  assert.deepEqual(row('google/veo-3.1', {}, { catalogue, videoModels: listing }).cost, because(REASONS.unitUnclear));
+  assert.deepEqual(row('google/veo-3.1', {}, { catalogue, videoModels: listing }).cost, because('unit unclear'));
 });
 
 test('a video Model missing from the listing is "unpriced"', () => {
   const listing = { data: videoModels.data.filter(m => m.id !== 'google/veo-3.1') };
-  assert.deepEqual(row('google/veo-3.1', {}, { catalogue, videoModels: listing }).cost, because(REASONS.unpriced));
+  assert.deepEqual(row('google/veo-3.1', {}, { catalogue, videoModels: listing }).cost, because('unpriced'));
 });
 
 test('the catalogue\'s $0 video prices are never shown as free', () => {
@@ -132,7 +132,8 @@ test('sorting by cost puts costs first, cheapest first, then every reason', () =
 });
 
 test('the Video Workload is seconds and an audio choice, remembered under settings.workloads.video', () => {
-  assert.deepEqual(workloadValues('video', {}), { seconds: 8, audio: 'on' });
-  assert.deepEqual(workloadValues('video', withVideo({ seconds: '12', audio: 'off' })), { seconds: 12, audio: 'off' });
-  assert.deepEqual(workloadValues('video', withVideo({ seconds: -3, audio: 'maybe' })), { seconds: 0, audio: 'on' });
+  const values = settings => buildPages({ catalogue }, settings, NOW).workloads.video.values;
+  assert.deepEqual(values({}), { seconds: 8, audio: 'on' });
+  assert.deepEqual(values(withVideo({ seconds: '12', audio: 'off' })), { seconds: 12, audio: 'off' });
+  assert.deepEqual(values(withVideo({ seconds: -3, audio: 'maybe' })), { seconds: 0, audio: 'on' });
 });

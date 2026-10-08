@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { buildPages, REASONS, WORKLOADS } from '../js/core.js';
+import { buildPages } from '../js/core.js';
 
 // Real responses captured 2026-10-08, each Model object exactly as returned:
 // the catalogue (/api/v1/models?output_modalities=all) trimmed to the image
@@ -34,7 +34,7 @@ test('Image lists every Model whose outputs include image, and nothing else', ()
 });
 
 test('the Image Workload is a number of images and a resolution of 1K, 2K or 4K, by default 10 at 1K', () => {
-  const [images, resolution] = WORKLOADS.image;
+  const [images, resolution] = buildPages(loaded, {}, NOW).workloads.image.inputs;
   assert.equal(images.key, 'images');
   assert.equal(images.default, 10);
   assert.equal(resolution.key, 'resolution');
@@ -74,28 +74,28 @@ test('an un-sized price beside sized ones is the smallest supported resolution\'
 });
 
 test('Models billed per token (Nano Banana, Gemini on either endpoint) get the per-token reason', () => {
-  assert.deepEqual(costOf('google/gemini-nano-banana-2.1'), why(REASONS.perToken));
-  assert.deepEqual(costOf('google/gemini-3.1-flash-image'), why(REASONS.perToken));
+  assert.deepEqual(costOf('google/gemini-nano-banana-2.1'), why('per-token pricing'));
+  assert.deepEqual(costOf('google/gemini-3.1-flash-image'), why('per-token pricing'));
 });
 
 test('per-megapixel prices and variants that aren\'t resolutions are "unit unclear", never guessed', () => {
-  assert.deepEqual(costOf('black-forest-labs/flux.2-pro'), why(REASONS.unitUnclear));      // per megapixel
-  assert.deepEqual(costOf('x-ai/grok-imagine-image-2.0'), why(REASONS.unitUnclear));       // low_1k, medium_1k, …
-  assert.deepEqual(costOf('bytedance-seed/seedream-5-0-pro'), why(REASONS.unitUnclear));   // "high_resolution"
+  assert.deepEqual(costOf('black-forest-labs/flux.2-pro'), why('unit unclear'));      // per megapixel
+  assert.deepEqual(costOf('x-ai/grok-imagine-image-2.0'), why('unit unclear'));       // low_1k, medium_1k, …
+  assert.deepEqual(costOf('bytedance-seed/seedream-5-0-pro'), why('unit unclear'));   // "high_resolution"
 });
 
 test('a Model with no image price is "unpriced", and a router is "variable"', () => {
-  assert.deepEqual(costOf('krea/krea-2-large'), why(REASONS.unpriced));   // an endpoint with no prices
-  assert.deepEqual(costOf('meta/muse-image'), why(REASONS.unpriced));     // no endpoints at all
-  assert.deepEqual(costOf('openrouter/auto'), why(REASONS.variable));     // not in the image listing; -1
+  assert.deepEqual(costOf('krea/krea-2-large'), why('unpriced'));   // an endpoint with no prices
+  assert.deepEqual(costOf('meta/muse-image'), why('unpriced'));     // no endpoints at all
+  assert.deepEqual(costOf('openrouter/auto'), why('variable'));     // not in the image listing; -1
 });
 
 test('before image pricing loads, every Image Model says so; rows fill in as prices arrive', () => {
-  for (const r of image({ catalogue })) assert.deepEqual(r.cost, why(REASONS.notLoaded), r.id);
+  for (const r of image({ catalogue })) assert.deepEqual(r.cost, why('pricing data not loaded'), r.id);
   const partly = { catalogue, imagePricing: { models: imageModels,
     endpoints: { 'black-forest-labs/flux-3-image': endpoints['black-forest-labs/flux-3-image'] } } };
   assert.deepEqual(costOf('black-forest-labs/flux-3-image', {}, partly), usd(0.48));
-  assert.deepEqual(costOf('bytedance-seed/seedream-4.5', {}, partly), why(REASONS.notLoaded));
+  assert.deepEqual(costOf('bytedance-seed/seedream-4.5', {}, partly), why('pricing data not loaded'));
 });
 
 test('sorting Image by cost puts costed Models first, cheapest first, then every reason', () => {
@@ -124,9 +124,9 @@ test('each Image row shows the per-image price used for the Workload\'s resoluti
   assert.deepEqual(row('bytedance-seed/seedream-5-0-flash').perImage, usd(0.018));
   assert.equal(row('bytedance-seed/seedream-5-0-flash').perImageAt, null);
   // No price: the reason, as for the cost.
-  assert.deepEqual(row('google/gemini-nano-banana-2.1').perImage, why(REASONS.perToken));
+  assert.deepEqual(row('google/gemini-nano-banana-2.1').perImage, why('per-token pricing'));
   assert.equal(row('google/gemini-nano-banana-2.1').perImageAt, null);
-  assert.deepEqual(image({ catalogue })[0].perImage, why(REASONS.notLoaded));
+  assert.deepEqual(image({ catalogue })[0].perImage, why('pricing data not loaded'));
 });
 
 test('Image can be sorted by per-image price, cheapest first, reasons last', () => {

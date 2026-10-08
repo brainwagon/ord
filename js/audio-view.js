@@ -1,6 +1,6 @@
-// The Audio page's own column for the shell (app.js), after the core ones:
-// the per-character price, or how the Model is billed instead (row.billing,
-// from js/audio.js).
+// The Audio page's part of the shell (app.js): its own column, after the
+// core ones: the per-character price, or how the Model is billed instead
+// (row.billing, from js/audio.js).
 import { fmtUsd, esc } from './table.js';
 
 const TOKEN_LABELS = { input: 'input', output: 'output', audioInput: 'audio input', audioOutput: 'audio output' };
@@ -19,7 +19,15 @@ function priceCell(r) {
   return note('unclear', "the price's unit is unclear");
 }
 
-export const AUDIO_COLUMNS = [
+const COLUMNS = [
   { key: 'charPrice', label: 'Per 1M chars', title: 'USD per 1M characters of input text; otherwise how the model is billed (hover for details)',
     cell: priceCell },
 ];
+
+/**
+ * The Audio page's view (see the page views in app.js).
+ * @param {import('./app.js').ViewShell} shell
+ */
+export function audioView() {
+  return { id: 'audio', label: 'Audio', columns: COLUMNS };
+}
