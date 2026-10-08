@@ -1,9 +1,18 @@
-// The shell: fetching, tabs and rendering around the pure core (core.js).
+// The shell: fetching, tabs, filters and rendering around the pure core
+// (core.js). The shared table lives in table.js.
 import { buildPages } from './core.js';
+import { CORE_COLUMNS, tableHtml, attachTable, fmtUsd, esc } from './table.js';
 
 const CATALOGUE_URL = 'https://openrouter.ai/api/v1/models?output_modalities=all';
 
-// Hash -> page id (the key buildPages returns rows under) and tab label.
+// All models' own columns, after the core ones.
+const ALL_MODELS_COLUMNS = [
+  { key: 'input', label: 'Input /1M', title: 'USD per 1M input tokens, as OpenRouter reports it', cell: r => priceCell(r.prices.input) },
+  { key: 'output', label: 'Output /1M', title: 'USD per 1M output tokens, as OpenRouter reports it', cell: r => priceCell(r.prices.output) },
+];
+
+// Hash -> page id (the key buildPages returns rows under), tab label, and the
+// page's columns after the core ones.
 const PAGES = {
   new: { id: 'whatsNew', label: "What's new" },
   code: { id: 'code', label: 'Code' },
@@ -12,11 +21,16 @@ const PAGES = {
   video: { id: 'video', label: 'Video' },
   transcription: { id: 'transcription', label: 'Transcription' },
   decisions: { id: 'decisions', label: 'Decisions' },
-  all: { id: 'allModels', label: 'All models' },
+  all: { id: 'allModels', label: 'All models', columns: ALL_MODELS_COLUMNS },
 };
 const DEFAULT_HASH = 'new';
 
-const state = { catalogue: null, loadedAt: null, loading: false };
+const state = {
+  catalogue: null, loadedAt: null, loading: false,
+  // The core's settings; filters and sort carry across tabs.
+  settings: { author: '', search: '', hideFree: false, sort: { key: 'created', dir: 'desc' } },
+  rows: [], columns: [],   // what the table is showing now
+};
 
 const $ = id => document.getElementById(id);
 
@@ -64,14 +78,29 @@ function render() {
     page.innerHTML = state.loading ? '<p class="placeholder">Loading the catalogue…</p>' : '';
     return;
   }
-  const pages = buildPages({ catalogue: state.catalogue }, {}, Date.now());
+  const pages = buildPages({ catalogue: state.catalogue }, state.settings, Date.now());
+  renderAuthors(pages.authors);
   const rows = pages[PAGES[hash].id];
   if (!rows) {
+    state.rows = [];
     page.innerHTML = `<p class="placeholder">The ${esc(PAGES[hash].label)} page isn't built yet. ` +
       `See <a href="#all">All models</a> for the whole catalogue.</p>`;
     return;
   }
-  page.innerHTML = allModelsTable(rows);
+  state.rows = rows;
+  state.columns = [...CORE_COLUMNS, ...(PAGES[hash].columns || [])];
+  page.innerHTML = tableHtml(rows, state.columns, state.settings.sort);
+}
+
+function renderAuthors(authors) {
+  const sel = $('author');
+  const want = ['', ...authors].join('\n');
+  if (sel.dataset.authors !== want) {
+    sel.dataset.authors = want;
+    sel.innerHTML = '<option value="">All Authors</option>' +
+      authors.map(a => `<option>${esc(a)}</option>`).join('');
+  }
+  sel.value = state.settings.author;
 }
 
 function renderStatus() {
@@ -82,57 +111,26 @@ function renderStatus() {
   $('status').textContent = `${state.catalogue.data.length} models, loaded ${ago}`;
 }
 
-function allModelsTable(rows) {
-  const body = rows.map(r => `<tr>
-    <td><a class="mid" href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.id)}</a>` +
-      `<span class="mname">${esc(r.name)}</span></td>
-    <td class="left">${esc(r.author)}</td>
-    <td class="num">${fmtDate(r.created)}</td>
-    <td class="num">${fmtContext(r.contextLength)}</td>
-    ${priceCell(r.prices.input)}
-    ${priceCell(r.prices.output)}
-  </tr>`).join('');
-  return `<table>
-    <thead><tr>
-      <th>Model</th><th class="left">Author</th><th>Added</th><th>Context</th>
-      <th title="USD per 1M input tokens, as OpenRouter reports it">Input /1M</th>
-      <th title="USD per 1M output tokens, as OpenRouter reports it">Output /1M</th>
-    </tr></thead>
-    <tbody>${body}</tbody>
-  </table>`;
-}
-
 function priceCell(p) {
   if (p.kind === 'variable') return '<td class="num note" title="price depends on the model the router picks">variable</td>';
   if (p.kind === 'unpriced') return '<td class="num note" title="OpenRouter lists no token price for this model">unpriced</td>';
   return `<td class="num">${fmtUsd(p.usd)}</td>`;
 }
 
-function fmtUsd(v) {
-  if (v === 0) return '$0';
-  if (v >= 1) return '$' + v.toFixed(2);
-  if (v >= 0.01) return '$' + v.toFixed(3);
-  return '$' + v.toPrecision(2);
+function setSetting(patch) {
+  Object.assign(state.settings, patch);
+  render();
 }
 
-// Some context windows are binary (262144), others decimal (1000000); print
-// each in whichever unit comes out round.
-function fmtContext(n) {
-  if (!n) return '—';
-  const v = n / (n % 1024 === 0 ? 1024 : 1000);
-  if (v < 1000) return Math.round(v) + 'K';
-  const m = v / 1000;
-  return (Math.abs(m - Math.round(m)) < 0.05 ? Math.round(m) : m.toFixed(1)) + 'M';
-}
-
-function fmtDate(ms) {
-  return new Date(ms).toISOString().slice(0, 10);
-}
-
-function esc(s) {
-  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
+attachTable($('page'), {
+  rows: () => state.rows,
+  columns: () => state.columns,
+  sort: () => state.settings.sort,
+  onSort: sort => setSetting({ sort }),
+});
+$('author').addEventListener('change', e => setSetting({ author: e.target.value }));
+$('search').addEventListener('input', e => setSetting({ search: e.target.value }));
+$('hideFree').addEventListener('change', e => setSetting({ hideFree: e.target.checked }));
 $('refresh').addEventListener('click', loadCatalogue);
 $('retry').addEventListener('click', loadCatalogue);
 addEventListener('hashchange', render);
