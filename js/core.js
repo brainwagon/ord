@@ -31,6 +31,12 @@
  * `reasoning` field) and `tiered`: null, or the higher-rate tiers
  * [{minPromptTokens, input, output, extraPrices}].
  *
+ * Every page with a Workload (WORKLOADS; today Code) adds `cost`, a Cost:
+ * {kind: 'usd', usd} for the viewer's Workload, or {kind: 'reason', reason}
+ * with one of REASONS. Code's cost is input tokens × `prompt` + output tokens
+ * × `completion`, at the base tier. Sorting by cost puts USD amounts first,
+ * ascending, then every reason, in either direction.
+ *
  * Every page drops `~…-latest` aliases (All models keeps them), applies the
  * filters, and sorts. Sorting by a Price puts USD amounts first, so $0 (with
  * `:free` variants first among ties), and any other kind last in either
@@ -40,14 +46,15 @@
  * @param {{catalogue: {data: object[]}}} sources raw API responses, as fetched
  *   (later: `videoModels`, `imagePricing` when loaded)
  * @param {{hideFree?: boolean, author?: string, search?: string, reasoningOnly?: boolean,
- *   sort?: {key: string, dir: 'asc'|'desc'}, newWindowDays?: number}} settings
+ *   sort?: {key: string, dir: 'asc'|'desc'}, newWindowDays?: number,
+ *   workloads?: {[pageId: string]: {[inputKey: string]: any}}}} settings
  *   the viewer's settings. `newWindowDays` is the "new" window (default 30).
  *   `search` matches name or id, case-insensitively. Sort keys: name, author,
  *   created, contextLength, plus each page's own (All models: input, output;
- *   Code: codingIndex, input, output); an unknown key means the page's
- *   default order (newest first; Code: coding index, highest first).
- *   `reasoningOnly` narrows Code to reasoning Models.
- *   (Later: Workloads, ...)
+ *   Code: codingIndex, input, output; any page with a Workload: cost); an
+ *   unknown key means the page's default order (newest first; Code: coding
+ *   index, highest first). `reasoningOnly` narrows Code to reasoning Models.
+ *   `workloads` holds each page's Workload values (see workloadValues).
  * @param {number} now current time, ms since the epoch
  * @returns {{authors: string[], allModels: object[], whatsNew: object[], code: object[]}}
  */
@@ -59,7 +66,7 @@ export function buildPages(sources, settings, now) {
     authors,
     allModels: buildPage(models, settings, ALL_MODELS, isNew),
     whatsNew: buildPage(models.filter(isNew), settings, WHATS_NEW, isNew),
-    code: buildPage(models, settings, CODE, isNew),
+    code: buildPage(models, settings, CODE, isNew, sources),
   };
 }
 
@@ -114,7 +121,26 @@ function capabilityPagesOf(m) {
 // columns it can be sorted on (key -> the row's value for that column), and
 // whether it lists `~…-latest` aliases (only All models does). Optional:
 // `includes(model)` (page membership), `keep(row, settings)` (a page-only
-// filter) and `defaultSort` ({key, dir}; otherwise newest first).
+// filter), `defaultSort` ({key, dir}; otherwise newest first) and
+// `workload`.
+//
+// Plugging in a Workload. A page that costs work gives
+//   workload: {
+//     id,       // its key in settings.workloads and WORKLOADS (the page id)
+//     inputs,   // [WorkloadInput], see WORKLOADS
+//     cost: (model, workload, sources) => Cost,
+//   }
+// and adds it to WORKLOADS. `cost` is pure: the raw API model, the Workload's
+// values ({[input key]: value}, defaults filled in from `inputs`, numbers
+// clamped to >= 0) and the raw `sources` (for extra price data, which may not
+// be loaded). It returns a Cost:
+//   {kind: 'usd', usd}             the Model's cost for the Workload, in USD
+//   {kind: 'reason', reason}       no cost; `reason` is one of REASONS
+// The shared pipeline then puts it on each row as `row.cost`, makes the page
+// sortable by `cost` (USD amounts ascending, $0 and `:free` first, every
+// reason after them in either direction) and checks the reason. The shell
+// renders the inputs and the cost column from these alone (js/app.js), so a
+// page needs nothing else.
 const ALL_MODELS = {
   includeAliases: true,
   rowOf: allModelsRow,
@@ -122,8 +148,18 @@ const ALL_MODELS = {
 };
 
 // Code: membership from the registry (text output, but not decisions,
-// embeddings or rerank).
+// embeddings or rerank). Workload: tokens in and out, priced at the base tier.
+const CODE_WORKLOAD = {
+  id: 'code',
+  inputs: [
+    { key: 'inputTokens', label: 'Input tokens', default: 3_000_000, step: 100_000 },
+    { key: 'outputTokens', label: 'Output tokens', default: 1_000_000, step: 100_000 },
+  ],
+  cost: (m, w) => tokenCost(m, [[m.pricing.prompt, w.inputTokens], [m.pricing.completion, w.outputTokens]]),
+};
+
 const CODE = {
+  workload: CODE_WORKLOAD,
   includes: CAPABILITY_PAGES.find(p => p.id === 'code').includes,
   rowOf: codeRow,
   keep: (r, settings) => !settings.reasoningOnly || r.badges.reasoning,
@@ -149,22 +185,24 @@ const CORE_SORT_KEYS = {
 // The pipeline every page shares: the page's rows, each badged "new" when it's
 // a New model (`isNew`, from isNewModel), through the viewer's filters, in the
 // viewer's sort order (newest first by default).
-function buildPage(models, settings, page, isNew) {
+function buildPage(models, settings, page, isNew, sources) {
   const author = settings.author || '';
   const search = (settings.search || '').trim().toLowerCase();
+  const costOf = page.workload ? workloadCoster(page.workload, settings, sources) : null;
   const rows = models
     .filter(m => page.includeAliases || !m.alias_target)
     .filter(m => !page.includes || page.includes(m))
     .map(m => {
       const row = page.rowOf(m);
       row.badges.new = isNew(m);
+      if (costOf) row.cost = costOf(m);
       return row;
     })
     .filter(r => !page.keep || page.keep(r, settings))
     .filter(r => !(settings.hideFree && r.badges.free))
     .filter(r => !author || r.author === author)
     .filter(r => !search || r.id.toLowerCase().includes(search) || r.name.toLowerCase().includes(search));
-  const sortKeys = { ...CORE_SORT_KEYS, ...page.sortKeys };
+  const sortKeys = { ...CORE_SORT_KEYS, ...page.sortKeys, ...(costOf && { cost: r => r.cost }) };
   const asked = settings.sort || {};
   const { key, dir } = sortKeys[asked.key] ? asked : page.defaultSort || NEWEST_FIRST;
   const valueOf = sortKeys[key];
@@ -176,6 +214,68 @@ function buildPage(models, settings, page, isNew) {
     (isKnown(valueOf(a)) && b.badges.free - a.badges.free) ||
     b.created - a.created ||
     a.id.localeCompare(b.id));
+}
+
+// Every reason a cost can be unavailable. A cost rule returns
+// {kind: 'reason', reason: REASONS.…}; anything else is an error.
+export const REASONS = Object.freeze({
+  perToken: 'per-token pricing',     // billed by the token, not by the Workload's unit
+  unpriced: 'unpriced',              // OpenRouter lists zero, and it isn't a free offering
+  unitUnclear: 'unit unclear',       // a price whose unit can't be pinned down
+  variable: 'variable',              // the API's -1: a router, priced by what it picks
+  notLoaded: 'pricing data not loaded',  // the extra source this page needs is missing
+});
+const REASON_SET = new Set(Object.values(REASONS));
+
+/**
+ * Each page's Workload inputs, keyed by page id, for the shell to render. A
+ * WorkloadInput is {key, label, default, ...}: a number (`step`, `min`
+ * optional, min defaults to 0) unless it gives `options` ([{value, label}],
+ * a choice; `default` is one of the values). The viewer's values live in
+ * `settings.workloads[pageId][key]`; missing or invalid ones mean the default.
+ */
+export const WORKLOADS = Object.freeze(Object.fromEntries(
+  [CODE_WORKLOAD].map(w => [w.id, w.inputs])));
+
+/** A page's Workload values: the viewer's, with defaults for anything missing or invalid. */
+export function workloadValues(pageId, settings) {
+  const asked = settings.workloads?.[pageId] || {};
+  return Object.fromEntries((WORKLOADS[pageId] || []).map(input => [input.key, inputValue(input, asked[input.key])]));
+}
+
+function inputValue(input, v) {
+  if (input.options) return input.options.some(o => o.value === v) ? v : input.default;
+  const n = typeof v === 'string' && v.trim() !== '' ? Number(v) : v;
+  return typeof n === 'number' && Number.isFinite(n) ? Math.max(input.min ?? 0, n) : input.default;
+}
+
+// A page's Model -> Cost for the viewer's Workload, checking what the rule returns.
+function workloadCoster(workload, settings, sources) {
+  const values = workloadValues(workload.id, settings);
+  return m => {
+    const c = workload.cost(m, values, sources);
+    if (c?.kind === 'usd' && Number.isFinite(c.usd) && c.usd >= 0) {
+      return { kind: 'usd', usd: Number(c.usd.toPrecision(12)) };
+    }
+    if (c?.kind === 'reason' && REASON_SET.has(c.reason)) return c;
+    throw new Error(`${workload.id} cost rule gave ${JSON.stringify(c)} for ${m.id}`);
+  };
+}
+
+const reason = r => ({ kind: 'reason', reason: r });
+
+// The cost of [[USD-per-unit price string, units], …] on a Model: any -1 makes
+// it variable, a zero price on a Model that isn't token-priced makes it
+// unpriced (see isTokenPriced), otherwise the sum.
+function tokenCost(m, terms) {
+  let usd = 0;
+  for (const [price, units] of terms) {
+    const v = Number(price);
+    if (v < 0) return reason(REASONS.variable);
+    if (v === 0 && !isTokenPriced(m)) return reason(REASONS.unpriced);
+    usd += v * units;
+  }
+  return { kind: 'usd', usd };
 }
 
 // Orders two column values; `sign` is 1 ascending, -1 descending. Missing

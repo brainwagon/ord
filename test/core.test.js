@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { buildPages } from '../js/core.js';
+import { buildPages, WORKLOADS, REASONS, workloadValues } from '../js/core.js';
 
 // Real /api/v1/models?output_modalities=all responses captured 2026-10-08,
 // trimmed to 35 Models (each object byte-for-byte as returned).
@@ -373,4 +373,82 @@ test('embeddings and rerank Models appear on no Capability page', () => {
   assert.deepEqual(pagesOf('voyageai/voyage-code-4'), []);
   assert.deepEqual(pagesOf('liquid/lfm-2.5-embedding-350m:free'), []);
   assert.deepEqual(pagesOf('cohere/rerank-4-fast'), []);
+});
+
+// --- Workloads and costs ---
+
+const cost = (id, settings = {}) => code(settings).find(r => r.id === id).cost;
+
+test('Code costs each Model for the default Workload of 3M input and 1M output tokens', () => {
+  // 3M × $4/M + 1M × $20/M = $12 + $20
+  assert.deepEqual(cost('anthropic/claude-opus-5.5'), usd(32));
+  // 3M × $1/M + 1M × $2.70/M
+  assert.deepEqual(cost('stepfun/step-5-preview'), usd(5.7));
+  // 3M × $0.0825/M + 1M × $0.33/M = $0.2475 + $0.33
+  assert.deepEqual(cost('tencent/hy3'), usd(0.5775));
+  // 3M × $0.09/M + 1M × $0.18/M = $0.27 + $0.18
+  assert.deepEqual(cost('poolside/laguna-s-2.1'), usd(0.45));
+  assert.deepEqual(cost('poolside/laguna-s-2.1:free'), usd(0));
+});
+
+test('the viewer\'s Workload, from settings.workloads.code, changes every cost', () => {
+  const settings = { workloads: { code: { inputTokens: 1_000_000, outputTokens: 0 } } };
+  assert.deepEqual(cost('anthropic/claude-opus-5.5', settings), usd(4));
+  assert.deepEqual(cost('stepfun/step-5-preview', settings), usd(1));
+  // 500K × $2/M + 250K × $10/M = $1 + $2.50, at the base tier even when tiered
+  const half = { workloads: { code: { inputTokens: 500_000, outputTokens: 250_000 } } };
+  assert.deepEqual(cost('openai/gpt-6.1-sol', half), usd(3.5));
+  // Only the given input changes; the other keeps its default (1M × $20/M)
+  assert.deepEqual(cost('anthropic/claude-opus-5.5', { workloads: { code: { inputTokens: 0 } } }), usd(20));
+});
+
+test('a missing, blank or negative Workload value falls back sensibly', () => {
+  const w = code => ({ workloads: { code } });
+  assert.deepEqual(cost('anthropic/claude-opus-5.5', w({ inputTokens: 'lots', outputTokens: null })), usd(32));
+  assert.deepEqual(cost('anthropic/claude-opus-5.5', w({ inputTokens: '2000000', outputTokens: -5 })), usd(8));
+  assert.deepEqual(workloadValues('code', {}), { inputTokens: 3_000_000, outputTokens: 1_000_000 });
+});
+
+test('variable-priced routers get a "variable" reason, never a cost', () => {
+  assert.deepEqual(cost('openrouter/auto'), { kind: 'reason', reason: 'variable' });
+  assert.deepEqual(cost('openrouter/auto', { workloads: { code: { inputTokens: 0, outputTokens: 0 } } }),
+    { kind: 'reason', reason: 'variable' });
+});
+
+test('a zero-priced Model that isn\'t a free offering gets an "unpriced" reason', () => {
+  assert.deepEqual(cost('google/lyria-3-pro-preview'), { kind: 'reason', reason: 'unpriced' });
+});
+
+test('sorting by cost puts computed costs first, cheapest first with :free leading $0, then every reason', () => {
+  for (const dir of ['asc', 'desc']) {
+    const rows = code({ sort: { key: 'cost', dir } });
+    const known = rows.filter(r => r.cost.kind === 'usd');
+    const reasons = rows.slice(known.length);
+    assert.ok(reasons.length >= 2 && reasons.every(r => r.cost.kind === 'reason'), dir);
+    assert.deepEqual(reasons.map(r => r.id).sort(), ['google/lyria-3-pro-preview', 'openrouter/auto']);
+    if (dir === 'asc') {
+      assert.equal(rows[0].id, 'poolside/laguna-s-2.1:free');
+      assert.deepEqual(known.slice(0, 3).map(r => r.cost.usd), [0, 0, 0]);
+      // laguna $0.45, hy3 $0.5775
+      assert.deepEqual(known.slice(3, 5).map(r => r.id), ['poolside/laguna-s-2.1', 'tencent/hy3']);
+    } else {
+      assert.equal(rows[0].id, 'openai/gpt-chat-latest');   // 3 × $5 + $30 = $45
+    }
+  }
+});
+
+test('every Workload input is declared with a key, label and default', () => {
+  assert.deepEqual(WORKLOADS.code.map(i => [i.key, i.default]),
+    [['inputTokens', 3_000_000], ['outputTokens', 1_000_000]]);
+  for (const inputs of Object.values(WORKLOADS)) {
+    for (const i of inputs) assert.ok(i.key && i.label && i.default !== undefined, JSON.stringify(i));
+  }
+  assert.deepEqual(Object.values(REASONS).sort(),
+    ['per-token pricing', 'pricing data not loaded', 'unit unclear', 'unpriced', 'variable']);
+});
+
+test('pages without a Workload carry no cost', () => {
+  const pages = buildPages({ catalogue }, {}, NOW);
+  assert.ok(pages.allModels.every(r => !('cost' in r)));
+  assert.ok(pages.whatsNew.every(r => !('cost' in r)));
 });
