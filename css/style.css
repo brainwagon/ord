@@ -89,6 +89,8 @@ td.model-cell { min-width: 14em; }
 }
 .badge.warn { color: var(--warn); border-color: var(--warn); }
 .badge.free { color: var(--accent); border-color: var(--accent); }
+.badge.tiered { cursor: help; border-style: dashed; }
+td.more { text-decoration: underline dotted var(--dim); text-underline-offset: 3px; cursor: help; }
 .badge.new { color: var(--bg); background: var(--accent); border-color: var(--accent); }
 a.badge.page { color: var(--fg); text-decoration: none; }
 a.badge.page:hover { border-color: var(--accent); color: var(--accent); }
@@ -104,6 +106,7 @@ th button.sort {
 }
 th button.sort:hover { color: var(--fg); }
 th[aria-sort] { color: var(--fg); }
+.filters label[hidden] { display: none; }
 .filters label { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--dim); }
 .filters .grow { flex: 1 1 12em; }
 .filters input[type="search"] { flex: 1; min-width: 0; }

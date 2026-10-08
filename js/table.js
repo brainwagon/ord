@@ -23,7 +23,37 @@ export const BADGES = {
   new: v => v ? '<span class="badge new" title="added within the &quot;new&quot; window">new</span>' : '',
   free: v => v ? '<span class="badge free">free</span>' : '',
   expires: v => v ? `<span class="badge warn" title="OpenRouter has scheduled this model for removal">expires ${esc(v)}</span>` : '',
+  reasoning: v => v ? '<span class="badge reasoning" title="supports reasoning">reasoning</span>' : '',
+  tiered: tiers => tiers ? `<span class="badge tiered" tabindex="0" title="${esc(tiersTitle(tiers))}">tiered</span>` : '',
 };
+
+// The hover text for a tiered badge: each tier's higher rates.
+function tiersTitle(tiers) {
+  return tiers.map(t =>
+    `Prompts over ${t.minPromptTokens.toLocaleString('en-US')} tokens, per 1M: ` +
+    [`input ${fmtPrice(t.input)}`, `output ${fmtPrice(t.output)}`, ...extraPriceLines(t.extraPrices)].join(', ')
+  ).join('\n');
+}
+
+const EXTRA_PRICE_LABELS = {
+  cacheRead: 'cache read', cacheWrite: 'cache write', cacheWrite1h: 'cache write (1h)', reasoning: 'reasoning',
+};
+
+/**
+ * Lines describing a row's `extraPrices` (per 1M tokens; web search per
+ * search), for hover text. Empty when there are none.
+ */
+export function extraPriceLines(extra = {}) {
+  const lines = Object.entries(EXTRA_PRICE_LABELS)
+    .filter(([k]) => extra[k]).map(([k, label]) => `${label} ${fmtPrice(extra[k])}`);
+  if (extra.webSearch) lines.push(`web search ${fmtPrice(extra.webSearch)}/search`);
+  return lines;
+}
+
+/** A Price as plain text: "$1.25", "variable" or "unpriced". */
+export function fmtPrice(p) {
+  return p.kind === 'usd' ? fmtUsd(p.usd) : p.kind;
+}
 
 const expanded = new Set();   // ids whose description is showing
 

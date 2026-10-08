@@ -4,8 +4,8 @@
 /**
  * The core's single public entry point.
  *
- * Returns ordered rows per page, keyed by page id. Today `allModels` and
- * `whatsNew`; later pages add keys alongside them (`code`, `image`, `audio`,
+ * Returns ordered rows per page, keyed by page id. Today `allModels`,
+ * `whatsNew` and `code`; later pages add keys alongside them (`image`, `audio`,
  * `video`, `transcription`, `decisions`). A page with no key isn't built yet.
  * What's new lists every New model in the catalogue (any kind, aliases
  * excluded); its rows add `badges.pages`, the ids of every Capability page
@@ -24,22 +24,32 @@
  *   {kind: 'variable'}   the API's -1 (routers)
  *   {kind: 'unpriced'}   zero on a Model that isn't a free offering
  *
+ * Code adds `codingIndex` (Artificial Analysis, null when unscored), the same
+ * `prices: {input, output}`, `extraPrices` ({cacheRead, cacheWrite,
+ * cacheWrite1h, reasoning} per 1M tokens and {webSearch} per search, each a
+ * Price, only those the API gives), and badges `reasoning: boolean` (has a
+ * `reasoning` field) and `tiered`: null, or the higher-rate tiers
+ * [{minPromptTokens, input, output, extraPrices}].
+ *
  * Every page drops `~…-latest` aliases (All models keeps them), applies the
  * filters, and sorts. Sorting by a Price puts USD amounts first, so $0 (with
  * `:free` variants first among ties), and any other kind last in either
- * direction; unknown values (null) also sort last.
+ * direction; unknown values (null) also sort last. Ties go `:free` first
+ * (among equal known values), then newest first.
  *
  * @param {{catalogue: {data: object[]}}} sources raw API responses, as fetched
  *   (later: `videoModels`, `imagePricing` when loaded)
- * @param {{hideFree?: boolean, author?: string, search?: string,
+ * @param {{hideFree?: boolean, author?: string, search?: string, reasoningOnly?: boolean,
  *   sort?: {key: string, dir: 'asc'|'desc'}, newWindowDays?: number}} settings
  *   the viewer's settings. `newWindowDays` is the "new" window (default 30).
  *   `search` matches name or id, case-insensitively. Sort keys: name, author,
- *   created, contextLength, plus each page's own (All models: input, output);
- *   an unknown key means the page's default order (newest first).
+ *   created, contextLength, plus each page's own (All models: input, output;
+ *   Code: codingIndex, input, output); an unknown key means the page's
+ *   default order (newest first; Code: coding index, highest first).
+ *   `reasoningOnly` narrows Code to reasoning Models.
  *   (Later: Workloads, ...)
  * @param {number} now current time, ms since the epoch
- * @returns {{authors: string[], allModels: object[], whatsNew: object[]}}
+ * @returns {{authors: string[], allModels: object[], whatsNew: object[], code: object[]}}
  */
 export function buildPages(sources, settings, now) {
   const models = sources.catalogue.data;
@@ -49,6 +59,7 @@ export function buildPages(sources, settings, now) {
     authors,
     allModels: buildPage(models, settings, ALL_MODELS, isNew),
     whatsNew: buildPage(models.filter(isNew), settings, WHATS_NEW, isNew),
+    code: buildPage(models, settings, CODE, isNew),
   };
 }
 
@@ -101,12 +112,31 @@ function capabilityPagesOf(m) {
 
 // A page definition: how to turn a Model into the page's row, the extra
 // columns it can be sorted on (key -> the row's value for that column), and
-// whether it lists `~…-latest` aliases (only All models does).
+// whether it lists `~…-latest` aliases (only All models does). Optional:
+// `includes(model)` (page membership), `keep(row, settings)` (a page-only
+// filter) and `defaultSort` ({key, dir}; otherwise newest first).
 const ALL_MODELS = {
   includeAliases: true,
   rowOf: allModelsRow,
   sortKeys: { input: r => r.prices.input, output: r => r.prices.output },
 };
+
+// Code: membership from the registry (text output, but not decisions,
+// embeddings or rerank).
+const CODE = {
+  includes: CAPABILITY_PAGES.find(p => p.id === 'code').includes,
+  rowOf: codeRow,
+  keep: (r, settings) => !settings.reasoningOnly || r.badges.reasoning,
+  sortKeys: {
+    codingIndex: r => r.codingIndex,
+    input: r => r.prices.input,
+    output: r => r.prices.output,
+  },
+  defaultSort: { key: 'codingIndex', dir: 'desc' },
+};
+
+// The default order for a page that doesn't give its own `defaultSort`.
+const NEWEST_FIRST = { key: 'created', dir: 'desc' };
 
 // Columns every page can be sorted on.
 const CORE_SORT_KEYS = {
@@ -124,21 +154,27 @@ function buildPage(models, settings, page, isNew) {
   const search = (settings.search || '').trim().toLowerCase();
   const rows = models
     .filter(m => page.includeAliases || !m.alias_target)
+    .filter(m => !page.includes || page.includes(m))
     .map(m => {
       const row = page.rowOf(m);
       row.badges.new = isNew(m);
       return row;
     })
+    .filter(r => !page.keep || page.keep(r, settings))
     .filter(r => !(settings.hideFree && r.badges.free))
     .filter(r => !author || r.author === author)
     .filter(r => !search || r.id.toLowerCase().includes(search) || r.name.toLowerCase().includes(search));
   const sortKeys = { ...CORE_SORT_KEYS, ...page.sortKeys };
-  const { key, dir } = settings.sort || {};
-  const valueOf = sortKeys[key] || CORE_SORT_KEYS.created;
-  const sign = sortKeys[key] ? (dir === 'desc' ? -1 : 1) : -1;
+  const asked = settings.sort || {};
+  const { key, dir } = sortKeys[asked.key] ? asked : page.defaultSort || NEWEST_FIRST;
+  const valueOf = sortKeys[key];
+  const sign = dir === 'desc' ? -1 : 1;
+  // Ties: `:free` variants first among equal values (so first among $0
+  // prices), then newest first, then by id.
   return rows.sort((a, b) =>
     compareValues(valueOf(a), valueOf(b), sign) ||
-    b.badges.free - a.badges.free ||
+    (isKnown(valueOf(a)) && b.badges.free - a.badges.free) ||
+    b.created - a.created ||
     a.id.localeCompare(b.id));
 }
 
@@ -151,6 +187,8 @@ function compareValues(a, b, sign) {
   const c = typeof a === 'string' ? a.localeCompare(b) : a - b;
   return sign * c;
 }
+
+const isKnown = v => v !== null && (typeof v !== 'object' || v.kind === 'usd');
 
 const authorOf = id => id.replace(/^~/, '').split('/')[0];
 
@@ -169,6 +207,46 @@ function coreFields(m) {
       free: m.id.endsWith(':free'),
     },
   };
+}
+
+function codeRow(m) {
+  const core = coreFields(m);
+  const p = m.pricing, zeroIsFree = isTokenPriced(m);
+  // Only prompt-length tiers count; some overrides are by time of day instead.
+  const tiers = (p.overrides || []).filter(o => o.min_prompt_tokens != null).map(o => ({
+    minPromptTokens: o.min_prompt_tokens,
+    input: perMillionTokens(o.prompt, zeroIsFree),
+    output: perMillionTokens(o.completion, zeroIsFree),
+    extraPrices: extraPrices(o),
+  }));
+  return {
+    ...core,
+    badges: { ...core.badges, reasoning: 'reasoning' in m, tiered: tiers.length ? tiers : null },
+    codingIndex: m.benchmarks?.artificial_analysis?.coding_index ?? null,
+    prices: {
+      input: perMillionTokens(p.prompt, zeroIsFree),
+      output: perMillionTokens(p.completion, zeroIsFree),
+    },
+    extraPrices: extraPrices(p),
+  };
+}
+
+// The secondary text-model prices (shown on hover), keyed by our name: the
+// API's per-token prices as USD per 1M tokens, and web search per search.
+// Only those the API gives are present.
+const EXTRA_TOKEN_PRICES = {
+  cacheRead: 'input_cache_read',
+  cacheWrite: 'input_cache_write',
+  cacheWrite1h: 'input_cache_write_1h',
+  reasoning: 'internal_reasoning',
+};
+function extraPrices(pricing) {
+  const out = {};
+  for (const [name, field] of Object.entries(EXTRA_TOKEN_PRICES)) {
+    if (pricing[field] != null) out[name] = perMillionTokens(pricing[field], true);
+  }
+  if (pricing.web_search != null) out.webSearch = { kind: 'usd', usd: Number(pricing.web_search) };
+  return out;
 }
 
 function allModelsRow(m) {
