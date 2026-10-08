@@ -273,7 +273,7 @@ test('Code shows input and output prices per 1M tokens', () => {
 test('Code carries cache, reasoning and web-search prices for hover, where the API gives them', () => {
   // Token prices per 1M tokens; web search in USD per search.
   assert.deepEqual(codeRow('google/gemini-3.8-flash').extraPrices, {
-    cacheRead: usd(0.075), cacheWrite: usd(0.0416666666667), reasoning: usd(3.75), webSearch: usd(0.014),
+    cacheRead: usd(0.075), cacheWrite: usd(0.04166666667), reasoning: usd(3.75), webSearch: usd(0.014),
   });
   assert.deepEqual(codeRow('anthropic/claude-opus-5.5').extraPrices, {
     cacheRead: usd(0.2), cacheWrite: usd(5), cacheWrite1h: usd(8), webSearch: usd(0.01),

@@ -5,7 +5,7 @@ import { transcriptionPage } from './transcription.js';
 import { decisionsPage } from './decisions.js';
 import { audioPage } from './audio.js';
 import { imagePage } from './image.js';
-import { parsePrice } from './pricing.js';
+import { parsePrice, roundUsd } from './pricing.js';
 
 /**
  * The core's single public entry point.
@@ -326,13 +326,14 @@ function inputValue(input, v) {
   return typeof n === 'number' && Number.isFinite(n) ? Math.max(input.min ?? 0, n) : input.default;
 }
 
-// A page's Model -> Cost for the viewer's Workload, checking what the rule returns.
+// A page's Model -> Cost for the viewer's Workload, checking what the rule
+// returns and rounding every USD amount once, here (see roundUsd).
 function workloadCoster(workload, settings, sources) {
   const values = workloadValues(workload.id, settings);
   return m => {
     const c = workload.cost(m, values, sources);
     if (c?.kind === 'usd' && Number.isFinite(c.usd) && c.usd >= 0) {
-      return { kind: 'usd', usd: Number(c.usd.toPrecision(12)) };
+      return { kind: 'usd', usd: roundUsd(c.usd) };
     }
     if (c?.kind === 'reason' && REASON_SET.has(c.reason)) return c;
     throw new Error(`${workload.id} cost rule gave ${JSON.stringify(c)} for ${m.id}`);
@@ -455,11 +456,11 @@ function isTokenPriced(m) {
 
 // API prices are USD-per-token strings; "-1" means variable (routers), and a
 // missing or non-numeric one is unpriced.
-// Rounding to 12 significant digits removes the float noise scaling adds.
+// roundUsd removes the float noise scaling adds.
 function perMillionTokens(s, zeroIsFree) {
   const v = parsePrice(s);
   if (v === null) return { kind: 'unpriced' };
   if (v < 0) return { kind: 'variable' };
   if (v === 0 && !zeroIsFree) return { kind: 'unpriced' };
-  return { kind: 'usd', usd: Number((v * 1e6).toPrecision(12)) };
+  return { kind: 'usd', usd: roundUsd(v * 1e6) };
 }

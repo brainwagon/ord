@@ -3,7 +3,7 @@
 // core.js's shared pipeline (see the comment above the page definitions there).
 // Pure: no DOM, no network.
 
-import { parsePrice } from './pricing.js';
+import { parsePrice, roundUsd } from './pricing.js';
 
 // How a speech or audio Model is billed, from its catalogue prices. OpenRouter's
 // TTS guide (docs/guides/overview/multimodal/tts) says most TTS Models are
@@ -90,5 +90,4 @@ function tokenPrices(pricing) {
   return out;
 }
 
-// Rounding to 12 significant digits removes the float noise scaling adds.
-const perMillion = v => Number((v * 1e6).toPrecision(12));
+const perMillion = v => roundUsd(v * 1e6);

@@ -9,7 +9,7 @@
 // orders of magnitude. Models with both input and output prices (e.g.
 // gpt-4o-transcribe) are billed by the token.
 
-import { parsePrice } from './pricing.js';
+import { parsePrice, roundUsd } from './pricing.js';
 
 // The highest price per second of audio taken at face value.
 export const MAX_PER_SECOND_USD = 0.01;
@@ -36,8 +36,7 @@ export function transcriptionPage({ REASONS, coreFields, includes }) {
   }
 
   // A per-second Cost scaled to `seconds` of audio.
-  const forSeconds = (c, seconds) =>
-    c.kind === 'usd' ? { kind: 'usd', usd: Number((c.usd * seconds).toPrecision(12)) } : c;
+  const forSeconds = (c, seconds) => c.kind === 'usd' ? { kind: 'usd', usd: c.usd * seconds } : c;
 
   return {
     workload: {
@@ -46,7 +45,10 @@ export function transcriptionPage({ REASONS, coreFields, includes }) {
       cost: (m, w) => forSeconds(perSecond(m), w.minutes * 60),
     },
     includes,
-    rowOf: m => ({ ...coreFields(m), perMinute: forSeconds(perSecond(m), 60) }),
+    rowOf: m => {
+      const perMinute = forSeconds(perSecond(m), 60);
+      return { ...coreFields(m), perMinute: perMinute.kind === 'usd' ? { kind: 'usd', usd: roundUsd(perMinute.usd) } : perMinute };
+    },
     sortKeys: { perMinute: r => r.perMinute },
   };
 }
