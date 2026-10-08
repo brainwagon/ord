@@ -9,6 +9,10 @@ HTML, CSS and ES modules with no build step and no dependencies.
 - `js/table.js`: the table every page shares (core columns, badges, sortable
   headers, expandable descriptions, click-to-copy ids). A page passes its own
   columns after `CORE_COLUMNS`; row order always comes from the core.
+- `js/store.js`: remembered settings and theme override in browser storage
+  (versioned keys, every access guarded). The whole settings object is saved
+  and merged over `DEFAULT_SETTINGS` in `app.js` on load, so a new setting or a
+  new page's Workload is remembered with no change here.
 - `js/core.js`: the pure core. It has no DOM or network access, and its single entry
   point is `buildPages(sources, settings, now)`, which turns raw API responses into
   rows for each page. A page with a Workload declares its inputs and a pure cost
