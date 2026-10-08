@@ -9,7 +9,7 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] Core columns, the ↗ link, copy-id and the expandable description work on All models
 - [ ] Sorting works on every column; Author filter and search narrow the rows
@@ -17,3 +17,7 @@
 - [ ] Alias exclusion is covered by a core test, with aliases still present in All models
 - [ ] The hide-free toggle works, and free rows sort first by cost (core test)
 - [ ] The page is usable at phone width
+
+## Comments
+
+Resolved on branch `integration/openrouter-dashboard` (merged at 1b17936, after code-review fixes). Tests: 119/119 passing.

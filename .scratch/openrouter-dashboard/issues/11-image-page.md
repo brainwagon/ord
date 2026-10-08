@@ -7,10 +7,14 @@
 
 **Blocked by:** 05
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] Image pricing is fetched only when the Image tab is first opened, with limited concurrency, and kept for several hours
 - [ ] A failed fetch is retried on the next visit rather than stored as empty
 - [ ] Fixtures include a Flux Model with several resolutions, Seedream (flat per-image) and Nano Banana (token unit), exactly as returned
 - [ ] The closest-resolution choice and the per-token reason are covered by core tests with hand-computed amounts
 - [ ] The Workload persists
+
+## Comments
+
+Resolved on branch `integration/openrouter-dashboard` (merged at 1b17936, after code-review fixes). Tests: 119/119 passing.

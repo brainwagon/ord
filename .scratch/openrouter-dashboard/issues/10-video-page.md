@@ -8,10 +8,14 @@
 
 **Blocked by:** 05
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] The video listing is fetched only when the Video tab is first opened
 - [ ] Fixtures include Veo (dollars per second, with and without audio), a Runway Model (cents per second) and Seedance (token SKUs), exactly as returned
 - [ ] Cents-to-dollars conversion and audio-variant choice are covered by core tests with hand-computed amounts
 - [ ] Not-loaded and failed states are covered by a core test, and the UI shows Retry
 - [ ] The Workload persists
+
+## Comments
+
+Resolved on branch `integration/openrouter-dashboard` (merged at 1b17936, after code-review fixes). Tests: 119/119 passing.

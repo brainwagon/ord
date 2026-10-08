@@ -4,10 +4,14 @@
 
 **Blocked by:** 04
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] Workloads, filters, toggles and sort order survive a reload
 - [ ] Reset view restores every default
 - [ ] Storage keys are versioned, and every storage access is guarded so a blocked store falls back to defaults
 - [ ] Colours are CSS custom properties. The page follows `prefers-color-scheme`, and the override toggle persists
 - [ ] Later pages can add their Workloads to persistence without changing the mechanism
+
+## Comments
+
+Resolved on branch `integration/openrouter-dashboard` (merged at 1b17936, after code-review fixes). Tests: 119/119 passing.

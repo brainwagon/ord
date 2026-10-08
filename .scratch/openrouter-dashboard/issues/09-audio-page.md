@@ -7,8 +7,12 @@
 
 **Blocked by:** 05
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] Fixtures include an ElevenLabs speech Model, gpt-audio and a Lyria Model
 - [ ] Membership and each of the three pricing outcomes are covered by core tests
 - [ ] The Workload persists
+
+## Comments
+
+Resolved on branch `integration/openrouter-dashboard` (merged at 1b17936, after code-review fixes). Tests: 119/119 passing.

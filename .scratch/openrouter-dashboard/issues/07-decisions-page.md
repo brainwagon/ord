@@ -6,8 +6,12 @@
 
 **Blocked by:** 05
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] Membership, the accepts-images flag and the free flag are covered by core tests using real decisions fixtures (an image-accepting Model and a `:free` Model)
 - [ ] Costs match hand-computed amounts
 - [ ] The Workload persists like the other pages'
+
+## Comments
+
+Resolved on branch `integration/openrouter-dashboard` (merged at 1b17936, after code-review fixes). Tests: 119/119 passing.

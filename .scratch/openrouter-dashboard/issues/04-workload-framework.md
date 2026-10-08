@@ -7,10 +7,14 @@
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] Changing the Workload updates every cost immediately
 - [ ] Code-page costs match hand-computed dollar amounts in core tests
 - [ ] Rows with a reason display "—" and the reason, and sort after computed costs (core test)
 - [ ] Variable-priced routers show a "variable" reason, never a cost
 - [ ] Adding a Workload to a new page needs only a page-specific input declaration and a cost rule, not changes to the shared cells or sort
+
+## Comments
+
+Resolved on branch `integration/openrouter-dashboard` (merged at 1b17936, after code-review fixes). Tests: 119/119 passing.

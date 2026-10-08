@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] The catalogue is fetched with `output_modalities=all`, once on load and on Refresh, never on a timer
 - [ ] All models lists every catalogue entry, including `~-latest` aliases, embeddings, rerank and routers
@@ -13,3 +13,7 @@
 - [ ] The core module has no DOM or network access and exposes one entry point. Tests drive only that entry point, using a saved real catalogue fixture
 - [ ] A failed fetch shows an error and a Retry button that works
 - [ ] The page runs as static files with no build step, and the tests run with Node's built-in runner and no dependencies
+
+## Comments
+
+Resolved on branch `integration/openrouter-dashboard` (merged at 1b17936, after code-review fixes). Tests: 119/119 passing.

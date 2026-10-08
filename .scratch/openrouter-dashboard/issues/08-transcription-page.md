@@ -7,10 +7,14 @@
 
 **Blocked by:** 05
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] Fixtures include whisper-1, the Microsoft MAI models and gpt-4o-transcribe exactly as the API returns them
 - [ ] whisper-1's cost for 60 minutes is $0.36, in a core test
 - [ ] The $0.01/s unit-unclear threshold is covered by a core test
 - [ ] Per-token Models show "—" with the per-token reason
 - [ ] The Workload persists
+
+## Comments
+
+Resolved on branch `integration/openrouter-dashboard` (merged at 1b17936, after code-review fixes). Tests: 119/119 passing.

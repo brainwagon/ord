@@ -8,10 +8,14 @@ This ticket does not include a Workload.
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] Code-page membership and the default coding-index ordering (unscored last) are covered by core tests
 - [ ] The reasoning badge appears exactly when a Model has a `reasoning` field, and the toggle filters to those (core test)
 - [ ] The tiered badge is covered by a core test using a fixture Model with `overrides`
 - [ ] Hover shows the tier, cache, reasoning and web-search prices where present
 - [ ] OpenRouter's `programming` category is not used
+
+## Comments
+
+Resolved on branch `integration/openrouter-dashboard` (merged at 1b17936, after code-review fixes). Tests: 119/119 passing.

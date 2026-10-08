@@ -4,10 +4,14 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] What's new is the default tab
 - [ ] The New model boundary (created within the window before the current time) is covered by a core test with a fixed current time
 - [ ] Page badges list every Capability page each Model appears on (core test with a multi-capability fixture Model)
 - [ ] Changing the window updates What's new and the "new" badges everywhere
 - [ ] Aliases are excluded from What's new
+
+## Comments
+
+Resolved on branch `integration/openrouter-dashboard` (merged at 1b17936, after code-review fixes). Tests: 119/119 passing.
