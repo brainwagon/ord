@@ -7,9 +7,10 @@
 
 /**
  * The Decisions page definition (see the page definitions in core.js). Rows
- * add `acceptsImages` (`image` among the input modalities) and `free` (input
- * and output both listed at $0; decisions are billed by the token, so that
- * is a genuine $0, `:free` variant or not). The core passes in what the page
+ * add `acceptsImages` (`image` among the input modalities) and `zeroPrice`
+ * (input and output both listed at $0; decisions are billed by the token, so
+ * that is a genuine "no charge", `:free` variant or not). It is not
+ * `badges.free`, which only ever means a `:free` variant. The core passes in what the page
  * needs from it, so this module imports nothing.
  *
  * @param {{coreFields: (m: object) => object,
@@ -30,8 +31,8 @@ export function decisionsPage({ coreFields, tokenCost, includes }) {
     rowOf: m => ({
       ...coreFields(m),
       acceptsImages: (m.architecture?.input_modalities || []).includes('image'),
-      free: Number(m.pricing?.prompt) === 0 && Number(m.pricing?.completion) === 0,
+      zeroPrice: Number(m.pricing?.prompt) === 0 && Number(m.pricing?.completion) === 0,
     }),
-    sortKeys: { acceptsImages: r => Number(r.acceptsImages), free: r => Number(r.free) },
+    sortKeys: { acceptsImages: r => Number(r.acceptsImages), zeroPrice: r => Number(r.zeroPrice) },
   };
 }

@@ -16,7 +16,7 @@ export const DECISIONS_VIEW = {
   columns: [
     { key: 'acceptsImages', label: 'Images', defaultDir: 'desc', title: 'accepts images as input',
       cell: r => flagCell(r.acceptsImages, 'accepts images as input') },
-    { key: 'free', label: 'Free', defaultDir: 'desc', title: 'costs nothing: listed at $0',
-      cell: r => flagCell(r.free, 'listed at $0') },
+    { key: 'zeroPrice', label: 'No charge', defaultDir: 'desc', title: 'listed at $0 (not the same as a :free variant)',
+      cell: r => flagCell(r.zeroPrice, 'listed at $0') },
   ],
 };
