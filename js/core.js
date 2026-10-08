@@ -135,7 +135,8 @@ function capabilityPagesOf(m) {
   return CAPABILITY_PAGES.filter(p => p.includes(m)).map(p => p.id);
 }
 
-// A page definition: how to turn a Model into the page's row, the extra
+// A page definition: how to turn a Model into the page's row
+// (`rowOf(model, sources, workloadValues)`), the extra
 // columns it can be sorted on (key -> the row's value for that column), and
 // whether it lists `~…-latest` aliases (only All models does). Optional:
 // `includes(model)` (page membership), `keep(row, settings)` (a page-only
@@ -252,12 +253,13 @@ const CORE_SORT_KEYS = {
 function buildPage(models, settings, page, isNew, sources) {
   const author = settings.author || '';
   const search = (settings.search || '').trim().toLowerCase();
-  const costOf = page.workload ? workloadCoster(page.workload, settings, sources) : null;
+  const values = page.workload ? workloadValues(page.workload.id, settings) : {};
+  const costOf = page.workload ? workloadCoster(page.workload, values, sources) : null;
   const rows = models
     .filter(m => page.includeAliases || !m.alias_target)
     .filter(m => !page.includes || page.includes(m))
     .map(m => {
-      const row = page.rowOf(m, sources);
+      const row = page.rowOf(m, sources, values);
       row.badges.new = isNew(m);
       if (costOf) row.cost = costOf(m);
       return row;
@@ -328,8 +330,7 @@ function inputValue(input, v) {
 
 // A page's Model -> Cost for the viewer's Workload, checking what the rule
 // returns and rounding every USD amount once, here (see roundUsd).
-function workloadCoster(workload, settings, sources) {
-  const values = workloadValues(workload.id, settings);
+function workloadCoster(workload, values, sources) {
   return m => {
     const c = workload.cost(m, values, sources);
     if (c?.kind === 'usd' && Number.isFinite(c.usd) && c.usd >= 0) {

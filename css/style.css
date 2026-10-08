@@ -138,6 +138,7 @@ select { max-width: 14em; }
 .wl-hint { min-width: 3em; font-family: var(--mono); font-size: 11px; }
 td.reason { cursor: help; }
 td.reason .why { margin-left: 6px; font-size: 11px; }
+td .at { color: var(--dim); font-size: 11px; }
 .placeholder { color: var(--dim); padding: 12px 4px; margin: 0; }
 .page-intro { margin: 2px 4px 8px; font-size: 13px; color: var(--dim); }
 td.flag { text-align: center; color: var(--accent); }

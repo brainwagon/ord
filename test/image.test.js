@@ -108,6 +108,33 @@ test('sorting Image by cost puts costed Models first, cheapest first, then every
   assert.ok(rows.slice(6).every(r => r.cost.kind === 'reason'));
 });
 
+test('each Image row shows the per-image price used for the Workload\'s resolution, and the resolution it\'s for', () => {
+  const row = (id, settings) => image(loaded, settings).find(r => r.id === id);
+  const flux = 'black-forest-labs/flux-3-image';
+  assert.deepEqual(row(flux).perImage, usd(0.048));
+  assert.equal(row(flux).perImageAt, '1K');
+  assert.deepEqual(row(flux, workload({ resolution: '4K' })).perImage, usd(0.607));
+  assert.equal(row(flux, workload({ resolution: '4K' })).perImageAt, '4K');
+  // qwen has no 4K price: the closest, 2K, is the one used.
+  assert.deepEqual(row('qwen/qwen-image-3-pro', workload({ resolution: '4K' })).perImage, usd(0.075));
+  assert.equal(row('qwen/qwen-image-3-pro', workload({ resolution: '4K' })).perImageAt, '2K');
+  // riverflow-v2-fast's un-sized price is its smallest supported resolution's.
+  assert.equal(row('sourceful/riverflow-v2-fast').perImageAt, '1K');
+  // A flat price is for every resolution.
+  assert.deepEqual(row('bytedance-seed/seedream-5-0-flash').perImage, usd(0.018));
+  assert.equal(row('bytedance-seed/seedream-5-0-flash').perImageAt, null);
+  // No price: the reason, as for the cost.
+  assert.deepEqual(row('google/gemini-nano-banana-2.1').perImage, why(REASONS.perToken));
+  assert.equal(row('google/gemini-nano-banana-2.1').perImageAt, null);
+  assert.deepEqual(image({ catalogue })[0].perImage, why(REASONS.notLoaded));
+});
+
+test('Image can be sorted by per-image price, cheapest first, reasons last', () => {
+  const rows = image(loaded, { sort: { key: 'perImage', dir: 'asc' } });
+  assert.deepEqual(rows.slice(0, 2).map(r => r.id), ['bytedance-seed/seedream-5-0-flash', 'sourceful/riverflow-v2-fast']);
+  assert.equal(rows.at(-1).perImage.kind, 'reason');
+});
+
 test('a remembered Image Workload is used, and an invalid resolution falls back to 1K', () => {
   const flux = 'black-forest-labs/flux-3-image';
   assert.deepEqual(costOf(flux, workload({ images: '4', resolution: '4K' })), usd(2.428));   // 4 × $0.607
