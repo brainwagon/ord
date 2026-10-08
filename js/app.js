@@ -37,7 +37,7 @@ const storage = browserStorage();
  * sources?, badges?, controls?, defaultSort?}: `id` is the key buildPages
  * returns its rows under; `columns` follow the core ones (a page with a
  * Workload also gets the cost column); `description` is one or two plain
- * sentences saying what the page lists, shown first; `intro` and `notice()`
+ * sentences saying what the page lists, shown first in the tab's panel; `intro` and `notice()`
  * are html above the table;
  * `onShow()` runs each time the tab is shown (to fetch extra pricing data
  * once); `sources()` adds that data to the core's sources; `badges` are its
@@ -132,6 +132,7 @@ function render({ keepOrder = false } = {}) {
     if (a.getAttribute('href') === '#' + hash) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
   }
+  $('pageDescription').textContent = view.description || '';
   renderStatus();
   view.onShow?.();   // a page's extra pricing data, fetched on first view
   for (const el of document.querySelectorAll('[data-page-control]')) {
@@ -153,8 +154,7 @@ function render({ keepOrder = false } = {}) {
   state.rows = rows;
   state.shown = { hash, ids: rows.map(r => r.id) };
   state.columns = [...CORE_COLUMNS, ...(view.columns || []), ...(workload ? [COST_COLUMN] : [])];
-  const description = view.description ? `<p class="page-description">${esc(view.description)}</p>` : '';
-  page.innerHTML = description + (view.intro || '') + (view.notice?.() || '') + tableHtml(rows, state.columns, currentSort());
+  page.innerHTML = (view.intro || '') + (view.notice?.() || '') + tableHtml(rows, state.columns, currentSort());
 }
 
 // The sort the table is showing: the viewer's, if this page has that column,

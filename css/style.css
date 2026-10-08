@@ -52,12 +52,22 @@ h1 { font-size: 16px; margin: 0; display: inline; }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
-nav { display: flex; flex-wrap: wrap; gap: 2px 4px; margin: 10px 0 0; }
+/* Folder tabs: the current one is the panel's colour and opens into the
+   panel below it (its bottom edge covers the panel's top border); the rest
+   sit behind, on the page's own background. */
+nav { display: flex; flex-wrap: wrap; gap: 2px 3px; margin: 10px 0 0; padding: 0 6px; }
 nav a {
-  padding: 4px 10px; border-radius: 4px 4px 0 0; color: var(--dim);
-  border-bottom: 2px solid transparent;
+  position: relative; margin-bottom: -1px; padding: 5px 12px 4px;
+  background: var(--stripe); color: var(--dim);
+  border: 1px solid var(--line); border-radius: 6px 6px 0 0;
 }
-nav a[aria-current="page"] { color: var(--fg); border-bottom-color: var(--accent); }
+nav a:hover { background: var(--hover); color: var(--fg); text-decoration: none; }
+nav a:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+nav a[aria-current="page"] {
+  z-index: 1; background: var(--panel); color: var(--fg);
+  border-top: 2px solid var(--accent); border-bottom-color: var(--panel); padding-top: 4px;
+}
+nav + .panel { margin-top: 0; }
 
 .panel {
   background: var(--panel); border: 1px solid var(--line);
@@ -141,6 +151,9 @@ td.reason .why { margin-left: 6px; font-size: 11px; }
 td.estimate { cursor: help; text-decoration: underline dotted var(--dim); text-underline-offset: 3px; }
 td .at { color: var(--dim); font-size: 11px; }
 .placeholder { color: var(--dim); padding: 12px 4px; margin: 0; }
-.page-intro, .page-description { margin: 2px 4px 8px; font-size: 13px; color: var(--dim); }
+.page-intro { margin: 2px 4px 8px; font-size: 13px; color: var(--dim); }
+/* The current tab's description: the first line of the panel the tab opens into. */
+.page-description { flex-basis: 100%; margin: 0 0 2px; font-size: 13px; color: var(--dim); }
+.page-description:empty { display: none; }
 td.flag { text-align: center; color: var(--accent); }
 footer { color: var(--dim); font-size: 11px; padding: 0 2px 6px; }
